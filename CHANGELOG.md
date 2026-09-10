@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Housekeeping only: refresh dungeon Playwright, Vite, and `ws` pins, raise
+  selected Python floors, and move GitHub Actions checkout/setup pins to v7.
+  Public product version remains 2.2.5. Phaser 4 is not included.
+
 ## [2.2.5] - 2026-09-06
 
 - Consolidate the public project at `avalonreset/legends-seo-dungeon`, with a
