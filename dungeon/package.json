@@ -38,10 +38,10 @@
     "test:launcher": "node tests/launch-smoke.mjs"
   },
   "dependencies": {
-    "concurrently": "^10.0.3",
+    "concurrently": "^10.0.5",
     "express": "^5.2.1",
     "phaser": "^3.87.0",
-    "playwright": "^1.62.1",
+    "playwright": "^1.63.0",
     "ws": "^8.21.3"
   },
   "devDependencies": {
