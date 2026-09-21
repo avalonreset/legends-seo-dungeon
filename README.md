@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="assets/banner.webp"><img src="assets/banner.webp" alt="Legends SEO Dungeon - Gamified SEO Audit Tool" width="100%"></a>
+  <a href="assets/banner.webp"><img src="assets/banner.webp" alt="legends-seo-dungeon: a playable seo audit where your agents fix the issues" width="100%"></a>
 </p>
 
 # Legends SEO Dungeon - Multi-Agent SEO Audit Game
