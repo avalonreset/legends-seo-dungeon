@@ -59,7 +59,7 @@ main() {
         exit 1
     fi
 
-    # Determine script directory (works for both ./install.sh and curl|bash)
+    # Determine script directory (works for both ./install.sh and piped-stdin)
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
     # Check if running from repo or standalone

@@ -16,7 +16,7 @@ main() {
     echo "════════════════════════════════════════"
     echo ""
 
-    # Support both traditional (curl|bash → ~/.claude/skills/seo) and marketplace
+    # Support both traditional (piped-stdin → ~/.claude/skills/seo) and marketplace
     # (plugin install → ~/.claude/plugins/cache/.../skills/seo) installations.
     # Resolve early using BASH_SOURCE so it works even when run from the plugin cache.
     _EARLY_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -77,7 +77,7 @@ main() {
         exit 1
     fi
 
-    # Determine script directory (works for both ./install.sh and curl|bash)
+    # Determine script directory (works for both ./install.sh and piped-stdin)
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
     # Check if running from repo or standalone

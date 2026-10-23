@@ -30,7 +30,7 @@ main() {
     fi
 
     # Locate this script's directory so the call works for both
-    # `./install.sh` and `curl | bash` invocations.
+    # `./install.sh` and `piped-stdin` invocations.
     SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd)"
 
     read -rsp "Ahrefs API token: " AHREFS_TOKEN
