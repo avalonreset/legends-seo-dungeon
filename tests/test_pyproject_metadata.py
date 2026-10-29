@@ -20,7 +20,7 @@ def test_pyproject_has_authors_and_keywords() -> None:
 def test_pyproject_has_minimal_ruff_config_only() -> None:
     text = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert "[tool.ruff]" in text
-    assert 'target-version = "py310"' in text
+    assert 'target-version = "py311"' in text
     assert "line-length = 100" in text
     assert "[tool.ruff.lint]" in text
     assert 'select = ["E", "F", "W", "I"]' in text

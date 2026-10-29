@@ -12,7 +12,7 @@ See [runtime setup](RUNTIMES.md) for provider-specific requirements.
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.11+
 - Node.js 22.12+ for the dungeon app
 - At least one supported CLI installed and authenticated with your own account
 - Internet access for the initial dependency install and hosted model/API calls

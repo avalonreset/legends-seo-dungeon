@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected Python floors, and move GitHub Actions checkout/setup pins to v7.
   Public product version remains 2.2.5. Phaser 4 is not included.
 
+## [2.2.6] - 2026-10-29
+
+- Raise minimum supported Python runtime to Python 3.11 (`requires-python = ">=3.11"`, `bin/claude-seo`, `install.ps1`, `install.sh`, and CI).
+- Harden `.github/workflows/ci.yml` with 40-character commit SHA action pins and upgrade `pip>=26.2.2` before dependency installation.
+
 ## [2.2.5] - 2026-09-06
 
 - Consolidate the public project at `avalonreset/legends-seo-dungeon`, with a

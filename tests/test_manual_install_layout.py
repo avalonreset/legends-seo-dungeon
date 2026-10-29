@@ -39,7 +39,7 @@ def test_installed_engine_contains_public_data_extensions_and_licenses(installed
     proc = subprocess.run([sys.executable, str(engine / "scripts/runtime.py"), "doctor", "--json"],
                           cwd=installed, capture_output=True, text=True, timeout=20)
     status = json.loads(proc.stdout)
-    assert status["plugin_version"] == "2.2.5"
+    assert status["plugin_version"] == "2.2.6"
     assert status["ready"] is False  # SKIP_DEPS must not claim an installed environment.
 
 

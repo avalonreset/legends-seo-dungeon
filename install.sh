@@ -87,8 +87,8 @@ main() {
   local python_bin
   python_bin="$(resolve_python)" || { echo "[ERROR] Python 3 is required."; exit 1; }
   local python_ok
-  python_ok="$("${python_bin}" -c 'import sys; print(1 if sys.version_info >= (3, 10) else 0)')"
-  [ "${python_ok}" = "1" ] || { echo "[ERROR] Python 3.10+ is required."; exit 1; }
+  python_ok="$("${python_bin}" -c 'import sys; print(1 if sys.version_info >= (3, 11) else 0)')"
+  [ "${python_ok}" = "1" ] || { echo "[ERROR] Python 3.11+ is required."; exit 1; }
 
   local source_dir
   prepare_source

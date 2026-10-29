@@ -88,8 +88,8 @@ function Install-Codex {
 
 $python = Resolve-Python
 if ($null -eq $python) { throw "Python 3 is required." }
-$versionOk = & $python.Exe @($python.Args + @("-c", "import sys; print(1 if sys.version_info >= (3, 10) else 0)"))
-if ($versionOk -ne "1") { throw "Python 3.10+ is required." }
+$versionOk = & $python.Exe @($python.Args + @("-c", "import sys; print(1 if sys.version_info >= (3, 11) else 0)"))
+if ($versionOk -ne "1") { throw "Python 3.11+ is required." }
 $sourceDir = Get-SourceDir
 
 Write-Host "========================================" -ForegroundColor Cyan
