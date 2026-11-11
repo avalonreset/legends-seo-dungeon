@@ -20,11 +20,11 @@ const reservePort = () => new Promise(resolve => {
 const port = await reservePort();
 const bridgePort = await reservePort();
 const bridgeServer = spawn(process.execPath, ['server/index.js'], {
-  cwd: root, stdio: 'ignore', windowsHide: true,
+  cwd: root, stdio: 'ignore',
   env: { ...process.env, SEO_DUNGEON_BRIDGE_PORT: String(bridgePort), SEO_DUNGEON_BRIDGE_STRICT_PORT: '1', SEO_DUNGEON_ALLOWED_ORIGINS: `http://127.0.0.1:${port}` },
 });
 const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
-  cwd: root, stdio: 'ignore', windowsHide: true,
+  cwd: root, stdio: 'ignore',
   env: { ...process.env, SEO_DUNGEON_BRIDGE_PORT: String(bridgePort) },
 });
 let browser;

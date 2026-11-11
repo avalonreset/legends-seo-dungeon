@@ -37,7 +37,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 ORPHAN_SCRIPT_WHITELIST = {
     "portability_check.py", "agent_ux_check.py", "gbp_deprecation_lint.py",
-    "release_sign.py", "verify_release.py", "consistency_check.py",
+    "release_sign.py", "verify_release.py", "consistency_check.py", "check_release.py",
 }
 GENERIC_BASENAMES = {"README.md", "SKILL.md", "__init__.py", "LICENSE", "LICENSE.txt",
                      "plugin.json", "marketplace.json", "hooks.json"}
@@ -185,6 +185,8 @@ def check_runtime_invocations(texts):
                 continue  # Dungeon uses the same managed dispatcher directly.
             errors.append(f"{f}: bare bundled-script invocation: {match.group(0)}")
         for script in sorted(set(raw_path.findall(content))):
+            if script == "runtime.py":
+                continue  # Dungeon uses the same managed dispatcher directly.
             errors.append(
                 f"{f}: unsupported raw script path scripts/{script}; "
                 f"use claude-seo run {script}"
@@ -283,7 +285,7 @@ def main():
     fileset = set(files)
     md = [f for f in files if f.endswith(".md")]
     texts = [f for f in files if f.endswith((".md", ".json", ".yaml", ".yml", ".toml",
-                                             ".py", ".sh", ".ps1", ".cff", ".txt", ".html"))]
+                                             ".py", ".sh", ".cff", ".txt", ".html"))]
 
     ref_errors, ref_infos = check_references(fileset, md)
     script_errors, script_orphans = check_script_refs(fileset, texts)

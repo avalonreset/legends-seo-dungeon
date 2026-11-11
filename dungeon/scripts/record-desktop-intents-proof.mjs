@@ -172,7 +172,6 @@ function spawnProcess(command, args, options = {}) {
   return spawn(command, args, {
     ...options,
     stdio: options.stdio || ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
   });
 }
 
@@ -186,7 +185,6 @@ async function killTree(child) {
     await new Promise((resolve) => {
       const killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
         stdio: 'ignore',
-        windowsHide: true,
       });
       killer.on('exit', resolve);
       killer.on('error', resolve);
@@ -751,16 +749,10 @@ Start-Sleep -Milliseconds 300
 $stillOpen = Get-Process -Id ${safePid} -ErrorAction SilentlyContinue
 if ($stillOpen -and $stillOpen.MainWindowTitle) {
   try {
-    $shell = New-Object -ComObject WScript.Shell
-    $activated = $shell.AppActivate([int]${safePid})
-    if (-not $activated) { $activated = $shell.AppActivate($stillOpen.MainWindowTitle) }
-    if ($activated) {
-      Start-Sleep -Milliseconds 150
-      $shell.SendKeys('%{F4}')
-      Write-Output "altf4:$($stillOpen.ProcessName):$($stillOpen.Id):$($stillOpen.MainWindowTitle)"
-    }
+    $null = $stillOpen.CloseMainWindow()
+    Write-Output "closed-main-window:$($stillOpen.ProcessName):$($stillOpen.Id):$($stillOpen.MainWindowTitle)"
   } catch {
-    Write-Output "altf4-error:$($stillOpen.ProcessName):$($stillOpen.Id):$($_.Exception.Message)"
+    Write-Output "close-error:$($stillOpen.ProcessName):$($stillOpen.Id):$($_.Exception.Message)"
   }
 }
 `;

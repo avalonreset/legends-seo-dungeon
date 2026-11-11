@@ -22,7 +22,7 @@ def installed(tmp_path_factory):
     home = tmp_path_factory.mktemp("dungeon home with spaces")
     env = dict(os.environ, CODEX_HOME=str(home), SEO_DUNGEON_SKIP_DEPS="1")
     if os.name == "nt":
-        command = [shutil.which("pwsh") or "powershell", "-NoProfile", "-File", str(ROOT / "install.ps1")]
+        command = [sys.executable, str(ROOT / "scripts" / "runtime.py"), "install-codex"]
     else:
         command = ["bash", str(ROOT / "install.sh")]
     proc = subprocess.run(command, cwd=home, env=env, capture_output=True, text=True, timeout=60)
@@ -39,7 +39,7 @@ def test_installed_engine_contains_public_data_extensions_and_licenses(installed
     proc = subprocess.run([sys.executable, str(engine / "scripts/runtime.py"), "doctor", "--json"],
                           cwd=installed, capture_output=True, text=True, timeout=20)
     status = json.loads(proc.stdout)
-    assert status["plugin_version"] == "2.2.6"
+    assert status["plugin_version"] == "2.2.7"
     assert status["ready"] is False  # SKIP_DEPS must not claim an installed environment.
 
 

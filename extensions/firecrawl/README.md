@@ -24,10 +24,10 @@ FIRECRAWL_API_KEY=fc-your-api-key
 ./extensions/firecrawl/install.sh
 ```
 
-### Windows (PowerShell)
+### Cross-Platform (Windows / macOS / Linux)
 
-```powershell
-.\extensions\firecrawl\install.ps1
+```bash
+claude-seo install-extension firecrawl
 ```
 
 The optional installer will prompt for your Firecrawl API key and configure the
@@ -83,7 +83,7 @@ Firecrawl directly:
 
 ```bash
 ./extensions/firecrawl/uninstall.sh      # macOS/Linux
-.\extensions\firecrawl\uninstall.ps1     # Windows
+claude-seo uninstall-extension firecrawl  # Cross-platform
 ```
 
 ## Links

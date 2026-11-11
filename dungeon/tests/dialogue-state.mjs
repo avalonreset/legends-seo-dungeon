@@ -37,7 +37,6 @@ function runServer() {
   server = spawn(process.execPath, [viteBin, '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
     cwd: dungeonRoot,
     stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
   });
   server.stdout.on('data', (chunk) => serverOutput.push(chunk.toString()));
   server.stderr.on('data', (chunk) => serverOutput.push(chunk.toString()));
@@ -49,7 +48,6 @@ async function stopServer() {
     await new Promise((resolve) => {
       const killer = spawn('taskkill', ['/pid', String(server.pid), '/T', '/F'], {
         stdio: 'ignore',
-        windowsHide: true,
       });
       killer.on('exit', resolve);
       killer.on('error', resolve);

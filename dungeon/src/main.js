@@ -343,7 +343,7 @@ function _createDisconnectBanner() {
   if (document.getElementById('bridge-disconnect-banner')) return;
   const banner = document.createElement('div');
   banner.id = 'bridge-disconnect-banner';
-  banner.innerHTML = '&#9888; BRIDGE SERVER DISCONNECTED &mdash; Run <code>npm start</code> in the dungeon/ directory';
+  banner.innerHTML = '&#9888; BRIDGE SERVER DISCONNECTED - Run <code>npm start</code> in the dungeon/ directory';
   banner.style.cssText = `
     position: fixed; top: 0; left: 0; right: 0; z-index: 99999;
     background: linear-gradient(90deg, #8b0000, #cc2200, #8b0000);

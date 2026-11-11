@@ -147,7 +147,6 @@ function spawnNode(command, args, options) {
   const child = spawn(command, args, {
     ...options,
     stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
   });
   return child;
 }
@@ -187,7 +186,6 @@ function runCli(args, { timeoutMs = 15000 } = {}) {
         SEO_DUNGEON_CONTROLLER_ORIGIN: origin,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
     });
     let stdout = '';
     let stderr = '';
@@ -241,7 +239,6 @@ async function killTree(child) {
     await new Promise((resolve) => {
       const killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
         stdio: 'ignore',
-        windowsHide: true,
       });
       killer.on('exit', resolve);
       killer.on('error', resolve);

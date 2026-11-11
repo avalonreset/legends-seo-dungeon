@@ -65,7 +65,6 @@ function runBridge() {
       SEO_DUNGEON_ALLOWED_ORIGINS: origin,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
   });
   bridge.stdout.on('data', (chunk) => bridgeOutput.push(chunk.toString()));
   bridge.stderr.on('data', (chunk) => bridgeOutput.push(chunk.toString()));
@@ -77,7 +76,6 @@ async function stopBridge() {
     await new Promise((resolve) => {
       const killer = spawn('taskkill', ['/pid', String(bridge.pid), '/T', '/F'], {
         stdio: 'ignore',
-        windowsHide: true,
       });
       killer.on('exit', resolve);
       killer.on('error', resolve);
@@ -142,7 +140,6 @@ function runCli(args, { env = cliEnv(), timeoutMs = 15000 } = {}) {
       cwd: dungeonRoot,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
     });
     let stdout = '';
     let stderr = '';
@@ -170,7 +167,6 @@ function startCli(args, { env = cliEnv(), timeoutMs = 15000 } = {}) {
     cwd: dungeonRoot,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
   });
   let stdout = '';
   let stderr = '';

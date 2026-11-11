@@ -53,8 +53,8 @@ Confirm the CLI is installed and authenticated:
 codex --version
 ```
 
-On Windows, Legends SEO Dungeon resolves local `.ps1`, `.cmd`, `.bat`, and `.exe` shims
-before launching the CLI. If you still see `spawn EPERM`, point the bridge at a
+On Windows, Legends SEO Dungeon resolves local `.cmd`, `.bat`, and `.exe` shims
+directly to their Node or binary entrypoints before launching the CLI. If you still see `spawn EPERM`, point the bridge at a
 specific executable or shim:
 
 If Codex is installed in a non-standard path, set:
@@ -128,8 +128,8 @@ $env:SEO_DUNGEON_GEMINI_MODEL_DEEP='pro'
 
 Run the root installer:
 
-```powershell
-.\install.ps1
+```bash
+python scripts/runtime.py install-codex
 ```
 
 Then restart Codex so it reloads skills and agents.

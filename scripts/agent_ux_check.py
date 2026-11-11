@@ -3,7 +3,7 @@
 Agent-friendly page auditor.
 
 Scores a page against the checklist in
-``skills/seo-technical/references/agent-friendly-pages.md`` — the
+``skills/seo-technical/references/agent-friendly-pages.md`` - the
 web.dev-sourced criteria Google's AI optimization guide references for
 agent UX. Findings cover the three channels agents use:
 
@@ -100,7 +100,7 @@ def analyze_html(html: str) -> dict:
         "inputs_without_label": 0,
     }
 
-    # Inputs without ARIA labels — first cut, then check label[for] coverage.
+    # Inputs without ARIA labels - first cut, then check label[for] coverage.
     aria_less = _INPUT_WITHOUT_LABEL_RE.findall(html)
     findings["inputs_without_aria"] = len(aria_less)
 

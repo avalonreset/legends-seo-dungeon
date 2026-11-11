@@ -34,9 +34,17 @@ prepare_source() {
   command -v git >/dev/null 2>&1 || { echo "[ERROR] Git is required for remote install."; exit 1; }
   local repo="${SEO_DUNGEON_REPO:-https://github.com/avalonreset/legends-seo-dungeon}"
   local ref="${SEO_DUNGEON_REF:-main}"
+  case "${repo}" in
+    https://*) ;;
+    *) echo "[ERROR] SEO_DUNGEON_REPO must be an https:// URL." >&2; exit 1 ;;
+  esac
+  if ! printf '%s' "${ref}" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._/-]*$'; then
+    echo "[ERROR] SEO_DUNGEON_REF must be a valid branch or tag name." >&2
+    exit 1
+  fi
   download_dir="$(mktemp -d)"
   echo "[INFO] Downloading Legends SEO Dungeon (${ref})..." >&2
-  git clone --depth 1 --branch "${ref}" "${repo}" "${download_dir}/legends-seo-dungeon"
+  git clone --depth 1 --branch "${ref}" -- "${repo}" "${download_dir}/legends-seo-dungeon"
   source_dir="${download_dir}/legends-seo-dungeon"
 }
 
@@ -86,12 +94,14 @@ install_codex() {
 main() {
   local python_bin
   python_bin="$(resolve_python)" || { echo "[ERROR] Python 3 is required."; exit 1; }
-  local python_ok
-  python_ok="$("${python_bin}" -c 'import sys; print(1 if sys.version_info >= (3, 11) else 0)')"
-  [ "${python_ok}" = "1" ] || { echo "[ERROR] Python 3.11+ is required."; exit 1; }
 
   local source_dir
   prepare_source
+
+  if ! "${python_bin}" "${source_dir}/scripts/runtime.py" --check-python >/dev/null 2>&1; then
+    echo "[ERROR] Python 3.11+ is required."
+    exit 1
+  fi
 
   echo "========================================"
   echo "  Legends SEO Dungeon - Installer"

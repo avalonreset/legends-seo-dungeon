@@ -142,7 +142,6 @@ function runBridge() {
       SEO_DUNGEON_CODEX_ARGS: `"${fakeCodexAppServer}"`,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
   });
   bridge.stdout.on('data', (chunk) => bridgeOutput.push(chunk.toString()));
   bridge.stderr.on('data', (chunk) => bridgeOutput.push(chunk.toString()));
@@ -154,7 +153,6 @@ async function stopBridge() {
     await new Promise((resolve) => {
       const killer = spawn('taskkill', ['/pid', String(bridge.pid), '/T', '/F'], {
         stdio: 'ignore',
-        windowsHide: true,
       });
       killer.on('exit', resolve);
       killer.on('error', resolve);

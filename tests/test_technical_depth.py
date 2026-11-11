@@ -2,10 +2,10 @@
 Tests for the v2 Checkpoint 3 technical-depth scripts.
 
 Coverage:
-    scripts/preload_check.py — Speculation Rules / bfcache / preload
-    scripts/indexnow_submit.py — payload validation + key verification
-    scripts/lcp_subparts.py — pure SSRF guard + result-shape (no live CrUX)
-    scripts/unlighthouse_run.py — SSRF guard + Node-availability check
+    scripts/preload_check.py - Speculation Rules / bfcache / preload
+    scripts/indexnow_submit.py - payload validation + key verification
+    scripts/lcp_subparts.py - pure SSRF guard + result-shape (no live CrUX)
+    scripts/unlighthouse_run.py - SSRF guard + Node-availability check
 
 lcp_subparts and unlighthouse are heavy network/process integrations;
 we test their non-network paths only. Real-API integration is
@@ -90,7 +90,7 @@ def test_preload_score_low_on_bfcache_killer() -> None:
 
 
 # ---------------------------------------------------------------------------
-# indexnow_submit — validation only (no network)
+# indexnow_submit - validation only (no network)
 # ---------------------------------------------------------------------------
 
 
@@ -137,7 +137,7 @@ def test_indexnow_rejects_private_ip_in_url_list() -> None:
 
 
 # ---------------------------------------------------------------------------
-# lcp_subparts — SSRF + missing-key paths
+# lcp_subparts - SSRF + missing-key paths
 # ---------------------------------------------------------------------------
 
 
@@ -155,7 +155,7 @@ def test_lcp_subparts_reports_missing_api_key() -> None:
 
 
 # ---------------------------------------------------------------------------
-# unlighthouse_run — SSRF + Node-missing paths
+# unlighthouse_run - SSRF + Node-missing paths
 # ---------------------------------------------------------------------------
 
 

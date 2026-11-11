@@ -169,23 +169,28 @@ const activeProcessOwners = new Map(); // id -> connection token
 const activeProcessMetadata = new Map(); // id -> public diagnostic metadata
 const pendingProcessMetadata = new Map(); // id -> metadata staged before child starts
 
+function isBlockedSystemPath(candidate) {
+  const lower = String(candidate || '').toLowerCase();
+  if (lower.startsWith('/var/folders/') || lower.startsWith('/private/var/folders/')) return false;
+  const blocked = ['/etc', '/usr', '/bin', '/sbin', '/var', '/root',
+    'c:\\windows', 'c:\\program files', 'c:\\program files (x86)'];
+  return blocked.some((dir) => lower === dir || lower.startsWith(`${dir}/`) || lower.startsWith(`${dir}\\`));
+}
+
 /**
- * Validate and resolve projectPath to prevent path traversal.
+ * Validate and resolve projectPath to prevent path traversal and symlink bypass.
  * Returns the resolved path or null if invalid.
  */
 function validateProjectPath(projectPath) {
   if (!projectPath) return PROJECT_ROOT;
   try {
     const resolved = path.resolve(projectPath);
-    // Block obvious system directories
-    const blocked = ['/etc', '/usr', '/bin', '/sbin', '/var', '/root',
-      'C:\\Windows', 'C:\\Program Files', 'C:\\Program Files (x86)'];
-    for (const dir of blocked) {
-      if (resolved.toLowerCase().startsWith(dir.toLowerCase())) return null;
-    }
+    if (isBlockedSystemPath(resolved)) return null;
     // Must exist and be a directory
     if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) return null;
-    return resolved;
+    const real = fs.realpathSync(resolved);
+    if (isBlockedSystemPath(real)) return null;
+    return real;
   } catch {
     return null;
   }
@@ -207,7 +212,6 @@ function revealProjectPath(projectPath) {
   const child = spawn(command, [resolved], {
     detached: true,
     stdio: 'ignore',
-    windowsHide: false,
     shell: false,
   });
   child.once('error', (err) => {
@@ -260,33 +264,9 @@ function pickProjectPath(projectPath) {
 
   try {
     if (process.platform === 'win32') {
-      const powershell = path.join(
-        process.env.SystemRoot || process.env.WINDIR || 'C:\\Windows',
-        'System32',
-        'WindowsPowerShell',
-        'v1.0',
-        'powershell.exe'
+      throw new Error(
+        'Interactive folder picker is disabled on Windows; paste or type the project folder path directly in the UI.'
       );
-      const psCommand = [
-        '$start = $env:SEO_DUNGEON_PICKER_START',
-        'if (-not (Test-Path -LiteralPath $start -PathType Container)) { $start = [Environment]::GetFolderPath("MyDocuments") }',
-        '$shell = New-Object -ComObject Shell.Application',
-        '$folder = $shell.BrowseForFolder(0, "Choose project folder for Legends SEO Dungeon", 0, $start)',
-        'if ($folder -and $folder.Self -and $folder.Self.Path) { [Console]::Out.WriteLine($folder.Self.Path); exit 0 }',
-        'exit 2'
-      ].join('; ');
-      selected = execFileSync(fs.existsSync(powershell) ? powershell : 'powershell.exe', [
-        '-NoProfile',
-        '-STA',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-Command',
-        psCommand
-      ], {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-        env: { ...process.env, SEO_DUNGEON_PICKER_START: startPath }
-      });
     } else if (process.platform === 'darwin') {
       selected = execFileSync('osascript', [
         '-e',
@@ -437,10 +417,16 @@ function unquoteEnvValue(value) {
   return trimmed;
 }
 
+const MAX_DOTENV_BYTES = 65536;
+
 function readDotEnvFile(filePath) {
   const values = {};
   try {
     if (!fs.existsSync(filePath)) return values;
+    const stat = fs.lstatSync(filePath);
+    if (stat.isSymbolicLink() || !stat.isFile() || stat.size > MAX_DOTENV_BYTES) {
+      return values;
+    }
     const source = fs.readFileSync(filePath, 'utf8');
     for (const line of source.split(/\r?\n/)) {
       const trimmed = line.trim();
@@ -546,29 +532,109 @@ function selectWindowsCliCandidate(command) {
   return candidates[0] || command;
 }
 
-function resolveNpmPowerShellShim(ps1Path) {
+function resolveNpmPowerShellShim(ps1Path, trySiblingCmd = true) {
   try {
     const source = fs.readFileSync(ps1Path, 'utf8');
-    const match = source.match(/node\$exe"\s+([^"\r\n]*?)"\$basedir[\\/](.*?\.js)"\s+\$args/);
-    if (!match) return null;
-
     const basedir = path.dirname(ps1Path);
-    const nodeExe = fs.existsSync(path.join(basedir, 'node.exe'))
-      ? path.join(basedir, 'node.exe')
-      : 'node.exe';
-    const nodeArgs = splitArgs(match[1] || '');
-    const scriptPath = path.join(basedir, ...match[2].split(/[\\/]/));
-    if (!fs.existsSync(scriptPath)) return null;
+    const match = source.match(/node\$exe"\s+([^"\r\n]*?)"\$basedir[\\/](.*?\.(?:c|m)?js)"\s+\$args/i);
+    if (match) {
+      const nodeExe = fs.existsSync(path.join(basedir, 'node.exe'))
+        ? path.join(basedir, 'node.exe')
+        : 'node.exe';
+      const nodeArgs = splitArgs(match[1] || '');
+      const scriptPath = path.join(basedir, ...match[2].split(/[\\/]/));
+      if (fs.existsSync(scriptPath)) {
+        return {
+          command: nodeExe,
+          argsPrefix: [...nodeArgs, scriptPath],
+          shell: false,
+          display: `${ps1Path} -> ${scriptPath}`
+        };
+      }
+    }
 
-    return {
-      command: nodeExe,
-      argsPrefix: [...nodeArgs, scriptPath],
-      shell: false,
-      display: `${ps1Path} -> ${scriptPath}`
-    };
+    const exeMatch = source.match(/&\s+"\$basedir[\\/]([^"\r\n]+?\.exe)"\s+\$args/i);
+    if (exeMatch) {
+      const exePath = path.join(basedir, ...exeMatch[1].split(/[\\/]/));
+      if (fs.existsSync(exePath)) {
+        return {
+          command: exePath,
+          argsPrefix: [],
+          shell: false,
+          display: `${ps1Path} -> ${exePath}`
+        };
+      }
+    }
+
+    if (trySiblingCmd) {
+      const siblingCmd = ps1Path.replace(/\.ps1$/i, '.cmd');
+      if (siblingCmd !== ps1Path && fs.existsSync(siblingCmd)) {
+        const cmdResolved = resolveNpmCmdShim(siblingCmd, false);
+        if (cmdResolved) {
+          return {
+            ...cmdResolved,
+            display: `${ps1Path} -> ${cmdResolved.argsPrefix[cmdResolved.argsPrefix.length - 1] || cmdResolved.command}`
+          };
+        }
+      }
+    }
+    return null;
   } catch (_) {
     return null;
   }
+}
+
+function resolveNpmCmdShim(cmdPath, trySiblingPs1 = true) {
+  try {
+    const source = fs.readFileSync(cmdPath, 'utf8');
+    const basedir = path.dirname(cmdPath);
+    const match = source.match(/(?:node(?:\.exe)?|%_prog%)"?\s+([^"\r\n]*?)"%(?:~?dp0%?)[\\/](.*?\.(?:c|m)?js)"\s+%\*/i)
+      || source.match(/"%(?:~?dp0%?)[\\/](.*?\.(?:c|m)?js)"\s+%\*/i);
+    if (match) {
+      const nodeExe = fs.existsSync(path.join(basedir, 'node.exe'))
+        ? path.join(basedir, 'node.exe')
+        : 'node.exe';
+      const hasArgsGroup = match.length > 2;
+      const nodeArgs = hasArgsGroup ? splitArgs(match[1] || '') : [];
+      const relScript = hasArgsGroup ? match[2] : match[1];
+      const scriptPath = path.join(basedir, ...relScript.split(/[\\/]/));
+      if (fs.existsSync(scriptPath)) {
+        return {
+          command: nodeExe,
+          argsPrefix: [...nodeArgs, scriptPath],
+          shell: false,
+          display: `${cmdPath} -> ${scriptPath}`
+        };
+      }
+    }
+
+    const exeMatch = source.match(/"%(?:~?dp0%?)[\\/]([^"\r\n]+?\.exe)"\s+%\*/i);
+    if (exeMatch) {
+      const exePath = path.join(basedir, ...exeMatch[1].split(/[\\/]/));
+      if (fs.existsSync(exePath)) {
+        return {
+          command: exePath,
+          argsPrefix: [],
+          shell: false,
+          display: `${cmdPath} -> ${exePath}`
+        };
+      }
+    }
+
+    if (trySiblingPs1) {
+      const siblingPs1 = cmdPath.replace(/\.(cmd|bat)$/i, '.ps1');
+      if (siblingPs1 !== cmdPath && fs.existsSync(siblingPs1)) {
+        const ps1Resolved = resolveNpmPowerShellShim(siblingPs1, false);
+        if (ps1Resolved) {
+          return {
+            ...ps1Resolved,
+            display: `${cmdPath} -> ${ps1Resolved.argsPrefix[ps1Resolved.argsPrefix.length - 1] || ps1Resolved.command}`
+          };
+        }
+      }
+    }
+  } catch (_) {}
+  return null;
 }
 
 function resolveCliLaunch(execPath) {
@@ -582,28 +648,25 @@ function resolveCliLaunch(execPath) {
   const ext = path.extname(selected).toLowerCase();
 
   if (ext === '.cmd' || ext === '.bat') {
-    return { command: selected, argsPrefix: [], shell: true, display: selected };
+    const cmdShim = resolveNpmCmdShim(selected);
+    if (cmdShim) return cmdShim;
+    throw new Error(
+      `Cannot safely unwrap Windows script shim (${selected}). Set SEO_DUNGEON_<RUNTIME>_CLI to the underlying .exe or .js entrypoint.`
+    );
   }
 
   if (ext === '.ps1') {
     const npmShim = resolveNpmPowerShellShim(selected);
     if (npmShim) return npmShim;
-
-    const powershell = process.env.SystemRoot
-      ? path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
-      : 'powershell.exe';
-    return {
-      command: powershell,
-      argsPrefix: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', selected],
-      shell: false,
-      display: selected
-    };
+    throw new Error(
+      `Cannot safely unwrap Windows script shim (${selected}). Set SEO_DUNGEON_<RUNTIME>_CLI to the underlying .exe or .js entrypoint.`
+    );
   }
 
   return {
     command: selected,
     argsPrefix: [],
-    shell: !path.extname(selected),
+    shell: false,
     display: selected
   };
 }
@@ -1776,7 +1839,7 @@ function buildCodexExecArgs({ cliArgs = [], prompt, workDir, profile, dangerousB
     workDir
   );
   if (codexProfile.model) args.push('-m', codexProfile.model);
-  args.push(prompt);
+  args.push('--', prompt);
 
   return { args, codexProfile };
 }
@@ -1864,9 +1927,8 @@ function createCodexAppServerRun({ prompt, onStream, onStatus, workDir, requestI
   const child = spawn(launch.command, appArgs, {
     cwd: workDir,
     env: safeEnv(workDir),
-    shell: launch.shell,
-    stdio: ['pipe', 'pipe', 'pipe'],
-    windowsHide: true
+    shell: false,
+    stdio: ['pipe', 'pipe', 'pipe']
   });
 
   let nextRpcId = 1;
@@ -2311,7 +2373,10 @@ function insertPromptArg(args, prompt) {
     }
     return arg;
   });
-  if (!inserted) finalArgs.push(prompt);
+  if (!inserted) {
+    if (!finalArgs.includes('--')) finalArgs.push('--');
+    finalArgs.push(prompt);
+  }
   return finalArgs;
 }
 
@@ -2334,9 +2399,8 @@ function runTextCli(runtime, prompt, onStream, cwd, requestId, profile, options 
     const proc = spawn(launch.command, launchArgs, {
       cwd: workDir,
       env: safeEnv(workDir),
-      shell: launch.shell,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe']
     });
 
     trackProcess(requestId, proc, options.connectionToken || null);
@@ -2421,9 +2485,8 @@ function runCodexExec(prompt, onStream, cwd, requestId, profile, options = {}) {
     const proc = spawn(launch.command, launchArgs, {
       cwd: workDir,
       env: safeEnv(workDir),
-      shell: launch.shell,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe']
     });
 
     trackProcess(requestId, proc, options.connectionToken || null);
@@ -2553,6 +2616,9 @@ function listenWithFallback(port, attemptsLeft = 24) {
     console.log(`Agent provider: ${resolveAgentProvider()}`);
     console.log(`Agent runs from: ${PROJECT_ROOT}`);
     console.log('─'.repeat(40));
+    if (typeof process.send === 'function') {
+      try { process.send({ type: 'bridge-ready', port: PORT }); } catch (_) {}
+    }
   };
   server.once('error', onError);
   server.once('listening', onListening);

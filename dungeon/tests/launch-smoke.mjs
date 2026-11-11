@@ -31,7 +31,6 @@ try {
   `);
   child = fork(path.join(fixture, 'start.cjs'), [], {
     silent: true,
-    windowsHide: true,
     env: {
       ...process.env,
       NODE_PATH: path.join(root, 'node_modules'),

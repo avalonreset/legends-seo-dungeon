@@ -29,12 +29,18 @@ function isStoreStubOutput(text) {
 }
 
 function probe(candidate) {
-  const script = "import sys; print(sys.executable); print(sys.version.split()[0])";
-  const result = spawnSync(candidate.exe, [...candidate.args, "-c", script], {
+  if (isStoreStubOutput(candidate.exe)) {
+    return false;
+  }
+  const result = spawnSync(candidate.exe, [...candidate.args, "--version"], {
     encoding: "utf8",
   });
   const output = `${result.stdout || ""}\n${result.stderr || ""}`;
-  return result.status === 0 && Boolean((result.stdout || "").trim()) && !isStoreStubOutput(output);
+  return (
+    result.status === 0 &&
+    /^Python\s+3\./i.test((output || "").trim()) &&
+    !isStoreStubOutput(output)
+  );
 }
 
 function main() {

@@ -32,7 +32,7 @@ if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 from url_safety import safe_requests_get  # noqa: E402, I001
 
-# Lazy-loader detection — covers native + the major JS lazy-loaders found on
+# Lazy-loader detection - covers native + the major JS lazy-loaders found on
 # WordPress/WooCommerce sites (Perfmatters, EWWW Image Optimizer, generic
 # `data-src` patterns). Sites optimized by these plugins strip native
 # `loading="lazy"` and replace `src` with a placeholder, so a check on `loading`
@@ -237,16 +237,26 @@ def main():
     args = parser.parse_args()
 
     if args.file:
+        from pathlib import Path
+        file_path = Path(args.file)
+        if file_path.is_symlink():
+            print(f"Error: Symlink file refused: {args.file}", file=sys.stderr)
+            sys.exit(1)
         real_path = os.path.realpath(args.file)
         if not os.path.isfile(real_path):
             print(f"Error: File not found: {args.file}", file=sys.stderr)
             sys.exit(1)
         with open(real_path, "r", encoding="utf-8") as f:
-            html = f.read()
+            html = f.read(5 * 1024 * 1024 + 1)
+        if len(html) > 5 * 1024 * 1024:
+            print(f"Error: File exceeds 5 MiB limit: {args.file}", file=sys.stderr)
+            sys.exit(1)
     else:
-        html = sys.stdin.read()
+        html = sys.stdin.read() if not sys.stdin.isatty() and not args.url else ""
+        if not html and not args.url:
+            html = sys.stdin.read()
         if not html and args.url:
-            resp = safe_requests_get(args.url, timeout=30, allow_redirects=True)
+            resp = safe_requests_get(args.url, timeout=30, allow_redirects=True, max_bytes=5 * 1024 * 1024)
             html = resp.text
             args.url = resp.url
 

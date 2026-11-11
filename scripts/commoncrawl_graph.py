@@ -23,6 +23,8 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
+import re
 from typing import Optional
 
 try:
@@ -36,12 +38,32 @@ sys.path.insert(0, _SCRIPTS_DIR)
 try:
     from backlinks_auth import get_cache_dir
     from google_auth import validate_url
+    from url_safety import safe_requests_get, safe_requests_head
 except ImportError:
-    print("Error: backlinks_auth.py and google_auth.py required in scripts/", file=sys.stderr)
+    print("Error: backlinks_auth.py, google_auth.py, and url_safety.py required in scripts/", file=sys.stderr)
     sys.exit(1)
 
 # Common Crawl web graph base URL (HTTP access to S3 bucket)
 CC_GRAPH_BASE = "https://data.commoncrawl.org/projects/hyperlinkgraph"
+RELEASE_NAME_RE = re.compile(r"^cc-main-\d{4}-[a-z]{3}-[a-z]{3}-[a-z]{3}$")
+DATA_TYPE_RE = re.compile(r"^[a-z0-9_-]{1,32}$")
+MAX_DECOMPRESSED_CHUNK_BYTES = 16 * 1024 * 1024  # 16 MiB per chunk ceiling
+MAX_TOTAL_DECOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB total stream ceiling
+
+
+def _validate_release_name(release: str) -> str:
+    cleaned = str(release or "").strip().lower()
+    if not RELEASE_NAME_RE.fullmatch(cleaned):
+        raise ValueError(f"Invalid Common Crawl release identifier: {release!r}")
+    return cleaned
+
+
+def _sanitize_cache_domain(domain: str) -> str:
+    cleaned = re.sub(r"[^a-z0-9.-]", "_", str(domain or "").lower().strip("."))
+    cleaned = re.sub(r"\.{2,}", "_", cleaned)
+    if not cleaned or cleaned in {".", ".."}:
+        raise ValueError("Invalid domain for Common Crawl cache")
+    return cleaned[:128]
 
 # Known recent releases (newest first).
 # Update periodically: check https://commoncrawl.github.io/cc-webgraph-statistics/
@@ -55,7 +77,7 @@ KNOWN_RELEASES = [
     "cc-main-2024-oct-nov-dec",
 ]
 
-# Graph file types — filenames include the release name as prefix
+# Graph file types - filenames include the release name as prefix
 # e.g., domain/cc-main-2026-jan-feb-mar-domain-vertices.txt.gz
 VERTICES_SUFFIX = "-domain-vertices.txt.gz"
 EDGES_SUFFIX = "-domain-edges.txt.gz"
@@ -64,7 +86,8 @@ RANKINGS_SUFFIX = "-domain-ranks.txt.gz"
 
 def _graph_file_url(release: str, suffix: str) -> str:
     """Build the full URL for a CC web graph file."""
-    return f"{CC_GRAPH_BASE}/{release}/domain/{release}{suffix}"
+    valid_release = _validate_release_name(release)
+    return f"{CC_GRAPH_BASE}/{valid_release}/domain/{valid_release}{suffix}"
 
 
 def _safe_float(s: str) -> Optional[float]:
@@ -87,19 +110,31 @@ def _get_latest_release() -> Optional[str]:
     for release in KNOWN_RELEASES:
         url = _graph_file_url(release, VERTICES_SUFFIX)
         try:
-            resp = requests.head(url, timeout=10, allow_redirects=True)
+            resp = safe_requests_head(url, timeout=10)
             if resp.status_code == 200:
                 return release
-        except requests.exceptions.RequestException:
+        except Exception:
             continue
     return None
 
 
 def _get_cache_path(domain: str, release: str, data_type: str) -> str:
     """Get the cache file path for a domain's data."""
-    cache_dir = get_cache_dir()
-    safe_domain = domain.replace("/", "_").replace(":", "_")
-    return os.path.join(cache_dir, f"{safe_domain}-{release}-{data_type}.json")
+    valid_release = _validate_release_name(release)
+    safe_domain = _sanitize_cache_domain(domain)
+    if not DATA_TYPE_RE.fullmatch(data_type):
+        raise ValueError("Invalid cache data_type")
+    cache_root = Path(get_cache_dir())
+    if cache_root.is_symlink():
+        raise ValueError("Cache directory must not be a symlink")
+    resolved_root = cache_root.resolve()
+    candidate = cache_root / f"{safe_domain}-{valid_release}-{data_type}.json"
+    if candidate.is_symlink():
+        raise ValueError("Cache file must not be a symlink")
+    resolved_candidate = candidate.resolve()
+    if not resolved_candidate.is_relative_to(resolved_root):
+        raise ValueError("Cache path traversal refused")
+    return str(resolved_candidate)
 
 
 def _is_cached(domain: str, release: str) -> Optional[dict]:
@@ -128,20 +163,41 @@ def _save_cache(domain: str, release: str, data: dict) -> None:
 
 def _stream_gz_lines(url: str, timeout: int = 120):
     """
-    Stream and decompress a gzipped text file line by line.
+    Stream and decompress a gzipped text file line by line with bounded memory.
 
-    Downloads the file in chunks and decompresses on the fly to avoid
-    loading multi-GiB files into memory.
+    Downloads the file in chunks and decompresses incrementally with strict
+    compressed and uncompressed byte caps.
 
     Yields:
         Decoded text lines.
     """
-    resp = requests.get(url, stream=True, timeout=timeout)
-    resp.raise_for_status()
+    import zlib
 
-    decompressor = gzip.GzipFile(fileobj=io.BytesIO(resp.content))
-    for line in io.TextIOWrapper(decompressor, encoding="utf-8"):
-        yield line.rstrip("\n")
+    max_compressed_bytes = 500 * 1024 * 1024
+    total_downloaded = 0
+    total_decompressed = 0
+    resp = safe_requests_get(url, stream=True, timeout=timeout)
+    try:
+        resp.raise_for_status()
+        decompressor = zlib.decompressobj(zlib.MAX_WBITS | 16)
+        leftover = ""
+        for chunk in resp.iter_content(chunk_size=256 * 1024):
+            total_downloaded += len(chunk)
+            if total_downloaded > max_compressed_bytes:
+                break
+            raw = decompressor.decompress(chunk, MAX_DECOMPRESSED_CHUNK_BYTES)
+            if decompressor.unconsumed_tail:
+                raise ValueError("Gzip chunk exceeded decompression safety bound")
+            total_decompressed += len(raw)
+            if total_decompressed > MAX_TOTAL_DECOMPRESSED_BYTES:
+                break
+            text = leftover + raw.decode("utf-8", errors="replace")
+            lines = text.split("\n")
+            leftover = lines[-1]
+            for line in lines[:-1]:
+                yield line.rstrip("\r")
+    finally:
+        resp.close()
 
 
 def _stream_gz_chunked(url: str, target_domain: str, timeout: int = 120,
@@ -167,9 +223,10 @@ def _stream_gz_chunked(url: str, target_domain: str, timeout: int = 120,
     matches = []
     max_compressed_bytes = 500 * 1024 * 1024  # 500 MiB safety cap
     total_downloaded = 0
+    total_decompressed = 0
 
     try:
-        resp = requests.get(url, stream=True, timeout=timeout)
+        resp = safe_requests_get(url, stream=True, timeout=timeout)
         resp.raise_for_status()
 
         # Incremental gzip decompression (wbits=16+MAX for gzip format)
@@ -182,7 +239,13 @@ def _stream_gz_chunked(url: str, target_domain: str, timeout: int = 120,
                 break
 
             try:
-                text = decompressor.decompress(chunk).decode("utf-8", errors="replace")
+                raw = decompressor.decompress(chunk, MAX_DECOMPRESSED_CHUNK_BYTES)
+                if decompressor.unconsumed_tail:
+                    break
+                total_decompressed += len(raw)
+                if total_decompressed > MAX_TOTAL_DECOMPRESSED_BYTES:
+                    break
+                text = raw.decode("utf-8", errors="replace")
             except zlib.error:
                 break
 
@@ -241,8 +304,18 @@ def get_domain_metrics(domain: str, release: Optional[str] = None,
         domain = urlparse(domain).netloc
     domain = domain.replace("www.", "")
 
-    # Find release
-    if not release:
+    # Find or validate release
+    if release:
+        try:
+            release = _validate_release_name(release)
+        except ValueError as exc:
+            return {
+                "status": "error",
+                "data": None,
+                "error": str(exc),
+                "metadata": {"source": "commoncrawl"},
+            }
+    else:
         release = _get_latest_release()
         if not release:
             return {

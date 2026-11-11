@@ -2,13 +2,13 @@
 
 Legends SEO Dungeon has two installation surfaces:
 
-- Codex skill installation through the root `install.ps1` or `install.sh`.
+- Codex skill installation through `python scripts/runtime.py install-codex` or `install.sh`.
 - The local dungeon app under `dungeon/`, which starts a Phaser UI and a
   localhost WebSocket bridge.
 
 The packaged app selects Codex by default. Claude Code, Gemini CLI, and xAI's
 official Grok CLI are available in the same picker when installed and signed in.
-See [runtime setup](RUNTIMES.md) for provider-specific requirements.
+See [runtime setup](RUNTIMES.md) for provider-specific requirements and [release readiness](RELEASE-READINESS.md) for verification checks.
 
 ## Requirements
 
@@ -58,8 +58,8 @@ repository-local engine without a global Codex skill installation.
 For `/seo` commands in Codex sessions outside the game, run the root installer
 from the extracted checkout:
 
-```powershell
-.\install.ps1
+```bash
+python scripts/runtime.py install-codex
 ```
 
 ```bash
@@ -171,8 +171,8 @@ python scripts/portability_check.py --strict
 
 Remove the installed Codex SEO skills and agent profiles from your Codex home:
 
-```powershell
-.\uninstall.ps1
+```bash
+python scripts/runtime.py uninstall-codex
 ```
 
 ```bash

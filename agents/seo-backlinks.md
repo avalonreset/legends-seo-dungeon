@@ -43,7 +43,7 @@ You are a backlink profile analyst. When delegated tasks during an SEO audit:
 - Never use Bing Webmaster data for an arbitrary competitor. Use Moz,
   DataForSEO, or Common Crawl when the second property is not registered.
 
-### Tier 3 (+ DataForSEO — Premium)
+### Tier 3 (+ DataForSEO - Premium)
 - If DataForSEO credentials or optional tools are available, use direct DataForSEO data for highest-fidelity analysis
 - DataForSEO data gets **confidence: 1.00**
 - Combine with free source data for cross-validation

@@ -1,5 +1,5 @@
 """
-Tests for v2 Checkpoint 6 (Phase F — local + international + privacy polish):
+Tests for v2 Checkpoint 6 (Phase F - local + international + privacy polish):
     scripts/gbp_deprecation_lint.py
     skills/seo-google/references/dma-consent-mode-v2.md
     skills/seo-hreflang/references/machine-translation-qa.md
@@ -54,7 +54,7 @@ def test_does_not_flag_gbp_qa_embed() -> None:
 
 
 def test_does_not_flag_generic_chat_widget() -> None:
-    """Intercom / drift / custom chat widgets are fine — we only flag GBP-chat."""
+    """Intercom / drift / custom chat widgets are fine - we only flag GBP-chat."""
     html = '<div id="intercom"><button>Message us</button></div>'
     result = gbp.scan(html)
     feats = {f["feature"] for f in result["findings"]}

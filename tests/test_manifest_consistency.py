@@ -136,13 +136,13 @@ def test_install_scripts_default_to_current_source_with_ref_override():
     assert sh_match, "install.sh must preserve the source-ref override"
     assert sh_match.group(1) == "main", "install.sh must default to current source"
 
-    ps_text = (REPO_ROOT / "install.ps1").read_text(encoding="utf-8")
-    ps_match = re.search(
-        r'\$ref\s*=\s*if\s*\(\$env:SEO_DUNGEON_REF\)\s*\{\s*\$env:SEO_DUNGEON_REF\s*\}\s*else\s*\{\s*"([^"]+)"\s*\}',
-        ps_text,
+    runtime_text = (REPO_ROOT / "scripts" / "runtime.py").read_text(encoding="utf-8")
+    py_match = re.search(
+        r'os\.environ\.get\("SEO_DUNGEON_REF",\s*"([^"]+)"\)',
+        runtime_text,
     )
-    assert ps_match, "install.ps1 must preserve the source-ref override"
-    assert ps_match.group(1) == "main", "install.ps1 must default to current source"
+    assert py_match, "scripts/runtime.py must preserve the source-ref override"
+    assert py_match.group(1) == "main", "scripts/runtime.py must default to current source"
 
 
 def _extract_section(text: str, heading: str) -> str:
@@ -295,7 +295,7 @@ def test_canonical_math_adds_up():
 def test_reference_files_have_at_least_one_link():
     """Every skills/*/references/*.md file must be cited somewhere in the repo.
 
-    Guards against orphan reference files — docs on disk that no SKILL.md,
+    Guards against orphan reference files - docs on disk that no SKILL.md,
     agent, top-level doc, or other reference file actually links to. Catches
     drift like the v2.0.0-era incident where llmstxt-evidence.md landed in
     references/ but was reachable only through a sibling cross-link, not
@@ -312,7 +312,7 @@ def test_reference_files_have_at_least_one_link():
     """
     ref_files = list((REPO_ROOT / "skills").glob("*/references/*.md"))
     if not ref_files:
-        return  # no references at all — nothing to check
+        return  # no references at all - nothing to check
 
     search_paths: list[Path] = []
     search_paths += list((REPO_ROOT / "skills").glob("*/SKILL.md"))
@@ -347,5 +347,5 @@ def test_reference_files_have_at_least_one_link():
         "Orphan reference files (on disk, not cited anywhere repo-wide):\n  "
         + "\n  ".join(orphans)
         + "\n\nFix: link the file from its parent SKILL.md, a related "
-          "reference doc, or a top-level doc — or delete if obsolete."
+          "reference doc, or a top-level doc - or delete if obsolete."
     )

@@ -1,7 +1,7 @@
 """
 Tests for v2 Checkpoint 7 (Phase G + I):
-    scripts/portability_check.py — frontmatter portability lint
-    AGENTS.md — multi-platform instructions (Codex/Cline/Aider added)
+    scripts/portability_check.py - frontmatter portability lint
+    AGENTS.md - multi-platform instructions (Codex/Cline/Aider added)
 """
 
 from __future__ import annotations

@@ -5,11 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.2.7] - 2026-11-11
 
-- Housekeeping only: refresh dungeon Playwright, Vite, and `ws` pins, raise
-  selected Python floors, and move GitHub Actions checkout/setup pins to v7.
-  Public product version remains 2.2.5. Phaser 4 is not included.
+### Security & Hardening
+- Eliminate `shell: true` command-line wrapping in `dungeon/server/index.js` (`resolveCliLaunch`), resolving `.cmd`/`.bat` npm shims directly to their Node `.js`/`.mjs` entrypoints under `process.execPath` and prepending `--` before positional prompt arguments (`[DUNGEON-001]`).
+- Enforce Windows Defender / EDR anti-ransomware laws across the repository: remove all `windowsHide` flags, `-ExecutionPolicy Bypass` switches, `WScript.Shell` COM invocations, and `.ps1` installers in favor of cross-platform `python scripts/runtime.py install-codex`, `uninstall-codex`, `install-extension`, and `uninstall-extension`, plus event-driven IPC readiness in `dungeon/launch.js` (`[DUNGEON-002]`).
+- Validate `token_uri` and `auth_uri` against official Google OAuth endpoint allowlists with `_OAuthNoRedirect` and `ProxyHandler({})` in `scripts/google_auth.py` (`[DUNGEON-003]`).
+- Harden `scripts/commoncrawl_graph.py` with strict `--release` format validation, sanitized cache filenames, `safe_requests_get`/`safe_requests_head` SSRF protection, and incremental streaming gzip decompression byte ceilings (`[DUNGEON-004]`).
+- Escape dynamic cluster attributes and page titles in `skills/seo-cluster/templates/cluster-map.html` and `skills/seo-cluster/SKILL.md` (`[DUNGEON-005]`).
+- Enforce `fs.realpathSync()` and `.env` symlink/size guards in `dungeon/server/index.js`, and `Path.is_relative_to()` boundary and filename sanitization in `scripts/capture_screenshot.py` (`[DUNGEON-006]`).
+- Enforce response byte ceilings in `scripts/parse_html.py`, `scripts/ucp_check.py` (with `safe_requests_head` and `MAX_UCP_ENDPOINT_PROBES = 16`), and `scripts/indexnow_submit.py`, plus redirect-host DNS pinning and `_BLOCKED_HOSTNAMES` checks inside `scripts/url_safety.py` (`[DUNGEON-007]`, `[DUNGEON-009]`).
+- Harden `extensions/banana/scripts/generate.py` and `edit.py` with model ID regex validation, `--api-key-file` support, `_NoRedirect`/`ProxyHandler({})`, symlink refusal, and image/response byte caps (`[DUNGEON-008]`).
+- Align version metadata to `2.2.7`, strip PNG `tEXt` metadata chunks, scrub em/en-dashes, mock `api.github.com` in `tests/test_sync_flow.py`, resolve `npx` safely on Windows in `scripts/unlighthouse_run.py`, and add `scripts/check_release.py` (`[DUNGEON-010]`, `[DUNGEON-011]`, `[DUNGEON-012]`).
 
 ## [2.2.6] - 2026-10-29
 

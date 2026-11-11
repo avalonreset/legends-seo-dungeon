@@ -20,7 +20,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Python 3.10
+      - name: Set up Python 3.11
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.11"
@@ -30,6 +30,11 @@ jobs:
           mapfile -t PYFILES < <(git ls-files 'scripts/*.py')
           python3 -m py_compile "${PYFILES[@]}"
           echo "All ${#PYFILES[@]} scripts passed syntax check"
+
+      - name: Check release readiness and consistency
+        run: |
+          python scripts/check_release.py
+          python scripts/consistency_check.py --strict
 
       - name: Install runtime + test deps
         run: |

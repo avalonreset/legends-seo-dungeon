@@ -78,7 +78,7 @@ import socket
 import threading
 from contextlib import contextmanager
 from typing import Iterator, Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 try:
     import requests
@@ -227,7 +227,7 @@ def normalize_hostname(hostname: str) -> str:
         raise URLSafetyError("Empty hostname")
 
     h = hostname.lower().strip()
-    # Strip a single trailing dot — FQDN form is semantically identical to
+    # Strip a single trailing dot - FQDN form is semantically identical to
     # the bare form for the purposes of resolution and policy.
     if h.endswith(".") and not h.endswith(".."):
         h = h[:-1]
@@ -261,7 +261,7 @@ def validate_url(url: str) -> bool:
         - Normalization itself fails (malformed obfuscated input)
     Returns True for any other well-formed http(s) URL with a
     public-looking hostname. Use ``validate_url_strict`` whenever the
-    caller will open a socket — only the strict form catches a DNS
+    caller will open a socket - only the strict form catches a DNS
     record that resolves to a non-public IP at connect time.
     """
     try:
@@ -279,7 +279,7 @@ def validate_url(url: str) -> bool:
     try:
         ipaddress.ip_address(hostname)
     except ValueError:
-        return True  # Hostname is a name, not a literal — OK at parse time.
+        return True  # Hostname is a name, not a literal - OK at parse time.
     return is_safe_ip(hostname)
 
 
@@ -359,7 +359,7 @@ def _pin_dns(hostname: str, pinned_ip: str, port: int) -> Iterator[None]:
     only to ``pinned_ip``, AND every other hostname looked up during the
     pinned scope has its resolved IPs validated against
     :func:`is_safe_ip`. Non-public resolutions raise ``socket.gaierror``,
-    which ``requests`` surfaces as ``ConnectionError`` — the caller's
+    which ``requests`` surfaces as ``ConnectionError`` - the caller's
     existing error path.
 
     The fall-through validation is the v2 fix for redirect-target DNS
@@ -377,32 +377,67 @@ def _pin_dns(hostname: str, pinned_ip: str, port: int) -> Iterator[None]:
         )
 
     original_getaddrinfo = socket.getaddrinfo
-    target = hostname.lower()
+    target = normalize_hostname(hostname)
+    initial_family = socket.AF_INET6 if ":" in pinned_ip else socket.AF_INET
+    pinned_hosts: dict[str, tuple[int, str]] = {
+        target: (initial_family, pinned_ip)
+    }
 
     def patched(host, requested_port, *args, **kwargs):
-        # Branch 1: the originally-pinned host returns the validated IP
-        # without any further resolver call.
-        if host and host.lower() == target:
+        if not host:
+            raise socket.gaierror(
+                socket.EAI_FAIL,
+                "url_safety: empty hostname refused",
+            )
+        eff_port = requested_port or port
+        if eff_port not in (80, 443):
+            raise socket.gaierror(
+                socket.EAI_FAIL,
+                f"url_safety: disallowed port {eff_port!r} refused",
+            )
+        try:
+            norm_host = normalize_hostname(str(host))
+        except URLSafetyError as exc:
+            raise socket.gaierror(
+                socket.EAI_FAIL,
+                f"url_safety: invalid hostname {host!r}: {exc}",
+            ) from exc
+
+        if norm_host in _BLOCKED_HOSTNAMES:
+            raise socket.gaierror(
+                socket.EAI_FAIL,
+                f"url_safety: blocked hostname {host!r} refused",
+            )
+
+        # Branch 1: the originally-pinned host or any previously-validated
+        # redirect host returns its cached public IP without re-querying DNS.
+        if norm_host in pinned_hosts:
+            pinned_family, cached_ip = pinned_hosts[norm_host]
             family = kwargs.get("family", args[0] if args else 0)
-            if family in (0, socket.AF_UNSPEC, socket.AF_INET):
+            if family in (0, socket.AF_UNSPEC, pinned_family):
+                sockaddr = (
+                    (cached_ip, eff_port, 0, 0)
+                    if pinned_family == socket.AF_INET6
+                    else (cached_ip, eff_port)
+                )
                 return [(
-                    socket.AF_INET,
+                    pinned_family,
                     socket.SOCK_STREAM,
                     socket.IPPROTO_TCP,
                     "",
-                    (pinned_ip, requested_port or port),
+                    sockaddr,
                 )]
             raise socket.gaierror(
                 socket.EAI_FAIL,
                 f"url_safety: address family {family} refused for pinned "
-                f"IPv4 host {host}",
+                f"host {host}",
             )
 
-        # Branch 2: every OTHER hostname (redirect target, embedded
-        # subresource, library bookkeeping) gets resolved by the real
-        # resolver, then each returned record is checked. A single
-        # non-public record fails the entire lookup.
+        # Branch 2: first resolution of a redirect target or subresource host.
+        # Resolve once, validate every returned record against is_safe_ip,
+        # and pin the first validated public IP for subsequent lookups.
         result = original_getaddrinfo(host, requested_port, *args, **kwargs)
+        first_valid: tuple[int, str] | None = None
         for info in result:
             sockaddr = info[4]
             if not sockaddr:
@@ -414,6 +449,22 @@ def _pin_dns(hostname: str, pinned_ip: str, port: int) -> Iterator[None]:
                     f"url_safety: refused to resolve {host!r} to "
                     f"non-public IP {ip_str}",
                 )
+            if first_valid is None:
+                first_valid = (info[0], ip_str)
+        if first_valid is not None:
+            pinned_hosts[norm_host] = first_valid
+            pinned_sockaddr = (
+                (first_valid[1], eff_port, 0, 0)
+                if first_valid[0] == socket.AF_INET6
+                else (first_valid[1], eff_port)
+            )
+            return [(
+                first_valid[0],
+                socket.SOCK_STREAM,
+                socket.IPPROTO_TCP,
+                "",
+                pinned_sockaddr,
+            )]
         return result
 
     socket.getaddrinfo = patched  # type: ignore[assignment]
@@ -424,24 +475,77 @@ def _pin_dns(hostname: str, pinned_ip: str, port: int) -> Iterator[None]:
         _dns_patch_lock.release()
 
 
+_REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
+
+
 def safe_requests_get(
     url: str,
     *,
     timeout: int = 30,
+    max_bytes: Optional[int] = None,
     **kwargs,
 ) -> requests.Response:
     """
-    ``requests.get`` with DNS-rebinding protection.
+    ``requests.get`` with DNS-rebinding protection, hop-by-hop redirect
+    validation, and optional byte ceiling.
 
-    The request's hostname is pinned to a pre-validated IP for the
-    duration of the call. Standard ``requests`` semantics otherwise.
+    Every redirect hop is validated via :func:`validate_url_strict` (scheme
+    ``http``/``https``, port ``80``/``443``, and public IP resolution) and
+    pinned via :func:`_pin_dns`.
     """
-    norm_url, pinned_ip = validate_url_strict(url)
-    parsed = urlparse(norm_url)
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    assert parsed.hostname is not None  # validate_url_strict guarantees this
-    with _pin_dns(parsed.hostname, pinned_ip, port):
-        return requests.get(norm_url, timeout=timeout, **kwargs)
+    allow_redirects = bool(kwargs.pop("allow_redirects", True))
+    max_redirects = int(kwargs.pop("max_redirects", 5))
+    current_url = url
+
+    for hop in range(max_redirects + 1):
+        norm_url, pinned_ip = validate_url_strict(current_url)
+        parsed = urlparse(norm_url)
+        if parsed.port not in (None, 80, 443):
+            raise URLSafetyError(f"Disallowed port in URL: {parsed.port}")
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        assert parsed.hostname is not None  # validate_url_strict guarantees this
+
+        with _pin_dns(parsed.hostname, pinned_ip, port):
+            req_kwargs = dict(kwargs)
+            if max_bytes is not None:
+                req_kwargs.setdefault("stream", True)
+            resp = requests.get(
+                norm_url,
+                timeout=timeout,
+                allow_redirects=False,
+                **req_kwargs,
+            )
+            status_code = getattr(resp, "status_code", 0)
+            headers = getattr(resp, "headers", None) or {}
+            location = headers.get("Location") or headers.get("location")
+            if allow_redirects and status_code in _REDIRECT_STATUS_CODES and location:
+                if hasattr(resp, "close"):
+                    resp.close()
+                if hop >= max_redirects:
+                    raise URLSafetyError(f"Exceeded maximum redirects ({max_redirects})")
+                current_url = urljoin(norm_url, location)
+                continue
+
+            if max_bytes is not None and hasattr(resp, "iter_content"):
+                chunks: list[bytes] = []
+                total = 0
+                try:
+                    for chunk in resp.iter_content(chunk_size=65536):
+                        if not chunk:
+                            continue
+                        total += len(chunk)
+                        if total > max_bytes:
+                            resp.close()
+                            raise URLSafetyError(
+                                f"Response body exceeds {max_bytes} byte limit for {norm_url}"
+                            )
+                        chunks.append(chunk)
+                    resp._content = b"".join(chunks)
+                finally:
+                    resp.close()
+            return resp
+
+    raise URLSafetyError(f"Exceeded maximum redirects ({max_redirects})")
 
 
 def safe_requests_head(
@@ -451,17 +555,41 @@ def safe_requests_head(
     **kwargs,
 ) -> requests.Response:
     """
-    ``requests.head`` with DNS-rebinding protection.
-
-    The request's hostname is pinned to a pre-validated IP for the
-    duration of the call. Standard ``requests`` semantics otherwise.
+    ``requests.head`` with DNS-rebinding protection and hop-by-hop redirect
+    validation.
     """
-    norm_url, pinned_ip = validate_url_strict(url)
-    parsed = urlparse(norm_url)
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    assert parsed.hostname is not None
-    with _pin_dns(parsed.hostname, pinned_ip, port):
-        return requests.head(norm_url, timeout=timeout, **kwargs)
+    allow_redirects = bool(kwargs.pop("allow_redirects", True))
+    max_redirects = int(kwargs.pop("max_redirects", 5))
+    current_url = url
+
+    for hop in range(max_redirects + 1):
+        norm_url, pinned_ip = validate_url_strict(current_url)
+        parsed = urlparse(norm_url)
+        if parsed.port not in (None, 80, 443):
+            raise URLSafetyError(f"Disallowed port in URL: {parsed.port}")
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        assert parsed.hostname is not None
+
+        with _pin_dns(parsed.hostname, pinned_ip, port):
+            resp = requests.head(
+                norm_url,
+                timeout=timeout,
+                allow_redirects=False,
+                **kwargs,
+            )
+            status_code = getattr(resp, "status_code", 0)
+            headers = getattr(resp, "headers", None) or {}
+            location = headers.get("Location") or headers.get("location")
+            if allow_redirects and status_code in _REDIRECT_STATUS_CODES and location:
+                if hasattr(resp, "close"):
+                    resp.close()
+                if hop >= max_redirects:
+                    raise URLSafetyError(f"Exceeded maximum redirects ({max_redirects})")
+                current_url = urljoin(norm_url, location)
+                continue
+            return resp
+
+    raise URLSafetyError(f"Exceeded maximum redirects ({max_redirects})")
 
 
 @contextmanager
@@ -517,7 +645,7 @@ def make_safe_playwright_route_handler(
 
             parsed = urlparse(request.url)
             if parsed.scheme not in ("http", "https"):
-                # data:, blob:, chrome-extension:, etc. — no DNS involved.
+                # data:, blob:, chrome-extension:, etc. - no DNS involved.
                 route.continue_()
                 return
             host = parsed.hostname

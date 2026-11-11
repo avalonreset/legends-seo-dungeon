@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
 from urllib.parse import ParseResult, urlparse
 
 try:
@@ -166,16 +167,37 @@ def main():
 
     args = parser.parse_args()
 
-    # Sanitize output path - prevent directory traversal
-    output_dir = os.path.realpath(args.output)
-    cwd = os.getcwd()
-    home = os.path.expanduser("~")
-    if not (output_dir.startswith(cwd) or output_dir.startswith(home)):
+    # Sanitize output path - prevent directory traversal and symlink escapes
+    _macos_system_symlinks = {
+        Path("/var"),
+        Path("/tmp"),
+        Path("/etc"),
+        Path("/private/var"),
+        Path("/private/tmp"),
+        Path("/private/etc"),
+    }
+    output_path_obj = Path(args.output)
+    for candidate in (output_path_obj, *output_path_obj.parents):
+        if candidate != output_path_obj and candidate in _macos_system_symlinks:
+            continue
+        try:
+            if candidate.is_symlink():
+                print("Error: Symlink paths are not allowed for --output", file=sys.stderr)
+                sys.exit(1)
+        except OSError:
+            pass
+    output_dir_resolved = output_path_obj.resolve()
+    cwd_resolved = Path.cwd().resolve()
+    home_resolved = Path.home().resolve()
+    if not (
+        output_dir_resolved.is_relative_to(cwd_resolved)
+        or output_dir_resolved.is_relative_to(home_resolved)
+    ):
         print("Error: Output path must be within current directory or home directory", file=sys.stderr)
         sys.exit(1)
 
     # Create output directory
-    os.makedirs(args.output, exist_ok=True)
+    output_dir_resolved.mkdir(parents=True, exist_ok=True)
 
     try:
         normalized_url, parsed_url = normalize_url(args.url)
@@ -183,14 +205,15 @@ def main():
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Generate filename from URL
-    base_name = parsed_url.netloc.replace(".", "_")
+    # Generate cross-platform safe filename from URL (strip colons, ports, etc.)
+    import re
+    base_name = re.sub(r"[^A-Za-z0-9_-]", "_", parsed_url.netloc) or "site"
 
     viewports = VIEWPORTS.keys() if args.all else [args.viewport]
 
     for viewport in viewports:
         filename = f"{base_name}_{viewport}.png"
-        output_path = os.path.join(args.output, filename)
+        output_path = str(output_dir_resolved / filename)
 
         print(f"Capturing {viewport} screenshot...")
         result = capture_screenshot(

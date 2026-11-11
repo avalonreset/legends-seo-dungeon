@@ -40,7 +40,7 @@ import url_safety  # noqa: E402
         ("example.com.", "example.com"),
         # Casing
         ("Example.COM", "example.com"),
-        # Obfuscated IPv4 — every glibc-accepted form canonicalises
+        # Obfuscated IPv4 - every glibc-accepted form canonicalises
         ("2130706433", "127.0.0.1"),       # decimal integer
         ("0x7f000001", "127.0.0.1"),       # hex integer
         ("017700000001", "127.0.0.1"),     # octal integer
@@ -70,7 +70,7 @@ def test_normalize_hostname_passes_through_dns_names() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Obfuscated IPv4 bypass regression — validate_url MUST reject these.
+# Obfuscated IPv4 bypass regression - validate_url MUST reject these.
 # Before the v2 self-audit, validate_url returned True for these forms;
 # only validate_url_strict caught them at DNS time. Anyone using the
 # parse-only function as a pre-flight gate would have been vulnerable.
@@ -339,10 +339,37 @@ def test_safe_requests_head_uses_strict_validation_and_dns_pin() -> None:
     request_head.assert_called_once_with(
         "https://safe.example/path",
         timeout=7,
-        allow_redirects=True,
+        allow_redirects=False,
     )
     assert captured["pin"] == ("safe.example", "1.1.1.1", 443)
     assert result is response
+
+
+def test_safe_requests_get_blocks_redirect_to_disallowed_port_or_scheme() -> None:
+    """Hop-by-hop redirect validation blocks redirects to non-80/443 ports or non-http(s) schemes."""
+    redirect_port_resp = SimpleNamespace(
+        status_code=302,
+        headers={"Location": "http://1.1.1.1:6379/pwn"},
+        close=lambda: None,
+    )
+    with patch.object(
+        url_safety,
+        "validate_url_strict",
+        side_effect=lambda u: (u, "1.1.1.1"),
+    ), patch.object(
+        url_safety.requests,
+        "get",
+        return_value=redirect_port_resp,
+    ):
+        with pytest.raises(url_safety.URLSafetyError, match="Disallowed port"):
+            url_safety.safe_requests_get("https://safe.example/start")
+
+    with url_safety._pin_dns("safe.example", "2606:4700:4700::1111", 443):
+        info = socket.getaddrinfo("safe.example", 443)
+        assert info[0][0] == socket.AF_INET6
+        assert info[0][4][0] == "2606:4700:4700::1111"
+        with pytest.raises(socket.gaierror, match="disallowed port"):
+            socket.getaddrinfo("safe.example", 6379)
 
 
 def test_pin_dns_restores_getaddrinfo_on_exception() -> None:

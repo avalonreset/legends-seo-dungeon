@@ -1,6 +1,6 @@
 {
   "name": "legends-seo-dungeon",
-  "version": "2.2.6",
+  "version": "2.2.7",
   "description": "A local multi-runtime 16-bit dungeon crawler interface for SEO audits",
   "scripts": {
     "start": "node launch.js",

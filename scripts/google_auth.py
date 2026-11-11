@@ -21,6 +21,8 @@ import os
 import re
 import sys
 import time
+import urllib.error
+import urllib.request
 from typing import Optional
 
 CONFIG_PATH = os.path.expanduser("~/.config/claude-seo/google-api.json")
@@ -222,7 +224,7 @@ def _save_oauth_token(token_data: dict):
         2. ``os.open`` with explicit mode 0o600 (mode applies only to
            newly-created files, ignored when the file already exists).
         3. ``os.fchmod`` on the open fd to *force* 0o600 even if the
-           file pre-existed at step 2 — defeats the
+           file pre-existed at step 2 - defeats the
            os.path.exists()/os.open() TOCTOU race where an external
            creator could install a 0o644 file between the two calls.
 
@@ -235,7 +237,7 @@ def _save_oauth_token(token_data: dict):
     fd = os.open(TOKEN_PATH, flags, 0o600)
     # fchmod on the open fd guarantees 0o600 even if the file existed at
     # open time (in which case os.open's mode arg is ignored by the OS).
-    # os.fdopen takes ownership of fd — it closes the fd whether the
+    # os.fdopen takes ownership of fd - it closes the fd whether the
     # write succeeds or raises, so there is no fd-leak path here.
     try:
         fchmod = getattr(os, "fchmod", None)
@@ -281,10 +283,53 @@ def _persist_oauth_client_path(creds_path: str):
         raise
 
 
+_ALLOWED_TOKEN_URIS = frozenset({
+    "https://oauth2.googleapis.com/token",
+    "https://accounts.google.com/o/oauth2/token",
+    "https://www.googleapis.com/oauth2/v3/token",
+    "https://www.googleapis.com/oauth2/v4/token",
+})
+_ALLOWED_AUTH_URIS = frozenset({
+    "https://accounts.google.com/o/oauth2/auth",
+    "https://accounts.google.com/o/oauth2/v2/auth",
+})
+
+
+class _OAuthNoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(
+            req.full_url, code, "OAuth redirects are not allowed", headers, fp
+        )
+
+
+def _post_oauth_token(token_uri: str, params_bytes: bytes) -> dict:
+    """POST to an allowlisted Google OAuth token endpoint without redirects or proxies."""
+    import ssl
+    if token_uri not in _ALLOWED_TOKEN_URIS:
+        raise ValueError("Untrusted OAuth token_uri; must be an official Google token endpoint.")
+    ctx = ssl.create_default_context()
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        urllib.request.HTTPSHandler(context=ctx),
+        _OAuthNoRedirect(),
+    )
+    req = urllib.request.Request(
+        token_uri,
+        data=params_bytes,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    with opener.open(req, timeout=30) as resp:
+        raw = resp.read(65536 + 1)
+    if len(raw) > 65536:
+        raise ValueError("OAuth token response exceeds 64 KiB limit")
+    return json.loads(raw.decode("utf-8"))
+
+
 def _refresh_oauth_token(client: dict, token_data: dict) -> Optional[dict]:
     """Refresh an expired OAuth token using the refresh_token."""
     import urllib.parse
-    import urllib.request
 
     if not token_data.get("refresh_token"):
         return None
@@ -297,15 +342,14 @@ def _refresh_oauth_token(client: dict, token_data: dict) -> Optional[dict]:
     }).encode()
 
     try:
-        req = urllib.request.Request(client.get("token_uri", "https://oauth2.googleapis.com/token"), data=params)
-        with urllib.request.urlopen(req) as resp:
-            new_data = json.loads(resp.read())
+        token_uri = client.get("token_uri", "https://oauth2.googleapis.com/token")
+        new_data = _post_oauth_token(token_uri, params)
         token_data["access_token"] = new_data["access_token"]
         token_data["expires_at"] = time.time() + new_data.get("expires_in", 3600)
         _save_oauth_token(token_data)
         return token_data
     except Exception as e:
-        print(f"Error refreshing OAuth token: {e}", file=sys.stderr)
+        print(f"Error refreshing OAuth token: {redact_google_api_key(e)}", file=sys.stderr)
         return None
 
 
@@ -381,9 +425,14 @@ def run_oauth_flow(creds_path: str):
         print("Error: Could not load OAuth client credentials.", file=sys.stderr)
         sys.exit(1)
 
+    auth_uri = client.get("auth_uri", "https://accounts.google.com/o/oauth2/auth")
+    if auth_uri not in _ALLOWED_AUTH_URIS:
+        print("Error: Untrusted OAuth auth_uri in client credentials.", file=sys.stderr)
+        sys.exit(1)
+
     auth_url = (
-        f"{client.get('auth_uri', 'https://accounts.google.com/o/oauth2/auth')}"
-        f"?client_id={client['client_id']}"
+        f"{auth_uri}"
+        f"?client_id={urllib.parse.quote(str(client['client_id']))}"
         f"&redirect_uri={urllib.parse.quote(OAUTH_REDIRECT_URI)}"
         f"&response_type=code"
         f"&scope={urllib.parse.quote(OAUTH_SCOPES)}"
@@ -451,11 +500,8 @@ def _exchange_code(client: dict, code: str, creds_path: Optional[str] = None):
     }).encode()
 
     try:
-        req = urllib.request.Request(
-            client.get("token_uri", "https://oauth2.googleapis.com/token"), data=params
-        )
-        with urllib.request.urlopen(req) as resp:
-            token_data = json.loads(resp.read())
+        token_uri = client.get("token_uri", "https://oauth2.googleapis.com/token")
+        token_data = _post_oauth_token(token_uri, params)
         token_data["expires_at"] = time.time() + token_data.get("expires_in", 3600)
         token_data["client_id"] = client["client_id"]
         # SECURITY: Never store client_secret in token file. It stays in client_secret.json only.

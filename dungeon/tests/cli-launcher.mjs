@@ -173,8 +173,10 @@ exit $LASTEXITCODE
 
   const cmdLaunch = bridge.resolveCliLaunch(fakeCmd);
   if (process.platform === 'win32') {
-    assert.equal(cmdLaunch.shell, true);
-    assert.equal(cmdLaunch.display.toLowerCase(), fakeCmd.toLowerCase());
+    assert.equal(cmdLaunch.command, 'node.exe');
+    assert.equal(cmdLaunch.shell, false);
+    assert.deepEqual(cmdLaunch.argsPrefix, ['--no-warnings=DEP0040', fakeJs]);
+    assert.match(cmdLaunch.display, /fakeagent\.cmd -> .*fakeagent\.js$/i);
   }
 
   process.env.SEO_DUNGEON_CODEX_CLI = 'fakeagent';
@@ -269,7 +271,7 @@ exit $LASTEXITCODE
   );
   assert.deepEqual(
     bridge.insertPromptArg(['exec', '--json'], 'multi word prompt stays together'),
-    ['exec', '--json', 'multi word prompt stays together']
+    ['exec', '--json', '--', 'multi word prompt stays together']
   );
 
   delete process.env.SEO_DUNGEON_ALLOW_NO_ORIGIN;
@@ -290,7 +292,7 @@ exit $LASTEXITCODE
   assert(redacted.includes('api_key=sk-1****'), 'generic key assignment should be redacted');
 
   const missingProjectDir = path.join(tmp, 'missing-project');
-  assert.equal(bridge.validateProjectPath(validProjectDir), path.resolve(validProjectDir));
+  assert.equal(bridge.validateProjectPath(validProjectDir), fs.realpathSync(validProjectDir));
   assert.equal(bridge.validateProjectPath(missingProjectDir), null);
   assert.equal(bridge.folderPickerStartPath(missingProjectDir), tmp);
   process.env.SEO_DUNGEON_DISABLE_FOLDER_PICKER = '1';

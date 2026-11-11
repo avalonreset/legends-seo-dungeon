@@ -5,7 +5,7 @@ Thin wrapper around the Unlighthouse CLI (https://unlighthouse.dev).
 Unlighthouse is an MIT-licensed OSS Lighthouse runner that crawls an
 entire site and outputs a single aggregate report. It's the closest
 free-tier equivalent to running PageSpeed against every URL on a site
-and aggregating the results — a workflow PSI's API quota does not
+and aggregating the results - a workflow PSI's API quota does not
 support without a paid Google Cloud bill.
 
 This wrapper:
@@ -42,15 +42,32 @@ from pathlib import Path
 _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
-from url_safety import URLSafetyError, validate_url_strict  # noqa: E402
+from url_safety import URLSafetyError, validate_url, validate_url_strict  # noqa: E402
 
 UNLIGHTHOUSE_PIN = "unlighthouse@0.13.5"
 
 
-def _check_node() -> str | None:
-    """Return None if Node is OK, else an error message."""
+def _resolve_npx_command() -> list[str] | None:
+    """Resolve npx to an executable argv prefix without cmd.exe shell wrapping."""
     npx = shutil.which("npx")
     if not npx:
+        return None
+    npx_path = Path(npx)
+    if os.name == "nt" and npx_path.suffix.lower() in (".cmd", ".bat"):
+        npx_cli_js = npx_path.parent / "node_modules" / "npm" / "bin" / "npx-cli.js"
+        node_exe = npx_path.parent / "node.exe"
+        if not node_exe.is_file():
+            which_node = shutil.which("node")
+            if which_node:
+                node_exe = Path(which_node)
+        if npx_cli_js.is_file() and node_exe.is_file():
+            return [str(node_exe), str(npx_cli_js)]
+    return [str(npx_path)]
+
+
+def _check_node() -> str | None:
+    """Return None if Node/npx is OK, else an error message."""
+    if not _resolve_npx_command():
         return ("npx not found on PATH. Install Node.js 18+ "
                 "(https://nodejs.org) and re-run.")
     return None
@@ -64,21 +81,34 @@ def run(
     output_dir: str | None = None,
     timeout: int = 600,
 ) -> dict:
+    if not validate_url(target):
+        try:
+            validate_url_strict(target)
+        except URLSafetyError as exc:
+            return {"ok": False, "error": f"url_safety: {exc}"}
+        return {"ok": False, "error": "url_safety: target URL failed validation"}
+
+    npx_cmd = _resolve_npx_command()
+    if not npx_cmd:
+        return {
+            "ok": False,
+            "error": (
+                "npx not found on PATH. Install Node.js 18+ "
+                "(https://nodejs.org) and re-run."
+            ),
+        }
+
     try:
         target, _ = validate_url_strict(target)
     except URLSafetyError as exc:
         return {"ok": False, "error": f"url_safety: {exc}"}
-
-    node_err = _check_node()
-    if node_err:
-        return {"ok": False, "error": node_err}
 
     out_dir = Path(output_dir) if output_dir else Path(tempfile.mkdtemp(
         prefix="claude-seo-unlighthouse-"))
     out_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = [
-        "npx", "--yes", "--package", UNLIGHTHOUSE_PIN, "unlighthouse-ci",
+        *npx_cmd, "--yes", "--package", UNLIGHTHOUSE_PIN, "unlighthouse-ci",
         "--site", target,
         "--device", device,
         "--output-path", str(out_dir),

@@ -47,7 +47,7 @@ if (!fs.existsSync(path.join(DIST, 'index.html'))) {
   console.log('  Building optimized production bundle...');
   try {
     execFileSync(process.execPath, [path.join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js'), 'build'], {
-      cwd: ROOT, stdio: 'inherit', windowsHide: true
+      cwd: ROOT, stdio: 'inherit'
     });
     console.log('  ✓ Build complete');
     console.log('');
@@ -89,20 +89,39 @@ function cleanup() {
 }
 
 async function waitForBridge(port) {
-  const deadline = Date.now() + 10000;
-  while (Date.now() < deadline) {
-    if (bridge.exitCode !== null || bridge.signalCode !== null) {
-      throw new Error(`Bridge exited before startup. See ${bridgeLogPath}`);
+  let ipcReady = false;
+  let notifyReady = null;
+  const onMessage = (msg) => {
+    if (msg && msg.type === 'bridge-ready') {
+      ipcReady = true;
+      if (notifyReady) notifyReady();
     }
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(500) });
-      const health = await response.json();
-      if (response.ok && health.ok === true && Number.isInteger(health.protocol)
-        && Array.isArray(health.supportedRuntimes) && health.supportedRuntimes.includes('codex')) return;
-    } catch (_) {}
-    await new Promise(resolve => setTimeout(resolve, 50));
+  };
+  bridge.on('message', onMessage);
+  try {
+    const deadline = Date.now() + 10000;
+    while (Date.now() < deadline) {
+      if (bridge.exitCode !== null || bridge.signalCode !== null) {
+        throw new Error(`Bridge exited before startup. See ${bridgeLogPath}`);
+      }
+      try {
+        const response = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(500) });
+        const health = await response.json();
+        if (response.ok && health.ok === true && Number.isInteger(health.protocol)
+          && Array.isArray(health.supportedRuntimes) && health.supportedRuntimes.includes('codex')) return;
+      } catch (_) {}
+      if (!ipcReady) {
+        await new Promise((resolve) => {
+          notifyReady = resolve;
+          setTimeout(resolve, 300);
+        });
+        notifyReady = null;
+      }
+    }
+    throw new Error(`Bridge did not start. See ${bridgeLogPath}`);
+  } finally {
+    bridge.off('message', onMessage);
   }
-  throw new Error(`Bridge did not start. See ${bridgeLogPath}`);
 }
 
 (async () => {
@@ -137,11 +156,7 @@ async function waitForBridge(port) {
       ].filter(Boolean).join(','),
       SEO_DUNGEON_SESSION_LOG: sessionLogPath
     },
-    stdio: ['ignore', bridgeLog, bridgeLog],
-    // Without windowsHide, Windows opens a blank console window for every
-    // detached child. We don't want two empty PowerShell windows littering
-    // the user's desktop; all bridge output goes to the log file anyway.
-    windowsHide: true
+    stdio: ['ignore', bridgeLog, bridgeLog, 'ipc']
   });
   fs.closeSync(bridgeLog);
   bridge.once('error', error => {

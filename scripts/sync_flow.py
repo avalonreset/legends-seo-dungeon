@@ -303,7 +303,7 @@ def sync(args):
     # Generate SHA-256 lockfile
     lock_path = root / LOCK_REL
     lock_lines = [
-        "# flow-prompts.lock — SHA-256 baseline for synced FLOW prompts",
+        "# flow-prompts.lock - SHA-256 baseline for synced FLOW prompts",
         f"# Ref: {args.ref or 'HEAD'} | format: <sha256hex>  <rel_path> (sha256sum-compatible)",
         "",
     ]

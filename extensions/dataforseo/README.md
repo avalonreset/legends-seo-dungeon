@@ -30,12 +30,12 @@ cd legends-seo-dungeon
 ./extensions/dataforseo/install.sh
 ```
 
-### Windows
+### Cross-Platform (Windows / macOS / Linux)
 
-```powershell
+```bash
 git clone https://github.com/avalonreset/legends-seo-dungeon.git
 cd legends-seo-dungeon
-.\extensions\dataforseo\install.ps1
+claude-seo install-extension dataforseo
 ```
 
 The optional extension installer will:
@@ -168,10 +168,10 @@ If a specific command fails, check that the module is in `ENABLED_MODULES` in yo
 ./extensions/dataforseo/uninstall.sh
 ```
 
-### Windows
+### Cross-Platform (Windows / macOS / Linux)
 
-```powershell
-.\extensions\dataforseo\uninstall.ps1
+```bash
+claude-seo uninstall-extension dataforseo
 ```
 
 This removes the skill, agent, field config, and optional MCP server entry from settings.json.

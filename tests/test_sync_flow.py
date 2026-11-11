@@ -11,32 +11,38 @@ SCRIPT = REPO_ROOT / "scripts" / "sync_flow.py"
 REF_DIR = REPO_ROOT / "skills" / "seo-flow" / "references"
 
 
-def test_dry_run_exits_zero():
-    result = subprocess.run(
-        [sys.executable, str(SCRIPT), "--dry-run"],
-        capture_output=True, text=True, cwd=REPO_ROOT
-    )
-    assert result.returncode == 0, f"Dry run failed:\n{result.stderr}"
+def _mock_sync_api_get(path, _ref, _headers):
+    import base64
+    if path.startswith("docs/09-prompts/") and not path.endswith(".md"):
+        return [{"type": "file", "name": "sample.md", "path": f"{path}/sample.md"}]
+    encoded = base64.b64encode(b"# Sample Prompt\n\nSample description.\n").decode("ascii")
+    return {"content": encoded}
 
 
-def test_dry_run_produces_valid_json():
-    result = subprocess.run(
-        [sys.executable, str(SCRIPT), "--dry-run"],
-        capture_output=True, text=True, cwd=REPO_ROOT
-    )
-    assert result.returncode == 0, f"Dry run failed:\n{result.stderr}"
-    data = json.loads(result.stdout)
+def test_dry_run_exits_zero(monkeypatch):
+    sf = _load_sync_flow_module()
+    monkeypatch.setattr(sf, "api_get", _mock_sync_api_get)
+    args = sf.argparse.Namespace(dry_run=True, ref=None)
+    result = sf.sync(args)
+    assert isinstance(result, dict)
+
+
+def test_dry_run_produces_valid_json(monkeypatch):
+    sf = _load_sync_flow_module()
+    monkeypatch.setattr(sf, "api_get", _mock_sync_api_get)
+    args = sf.argparse.Namespace(dry_run=True, ref=None)
+    data = json.loads(json.dumps(sf.sync(args), sort_keys=True))
     assert "added" in data, "JSON missing 'added' key"
     assert "updated" in data, "JSON missing 'updated' key"
     assert "unchanged" in data, "JSON missing 'unchanged' key"
 
 
-def test_dry_run_does_not_write_files():
+def test_dry_run_does_not_write_files(monkeypatch):
+    sf = _load_sync_flow_module()
+    monkeypatch.setattr(sf, "api_get", _mock_sync_api_get)
     files_before = set(REF_DIR.rglob("*.md"))
-    subprocess.run(
-        [sys.executable, str(SCRIPT), "--dry-run"],
-        capture_output=True, cwd=REPO_ROOT
-    )
+    args = sf.argparse.Namespace(dry_run=True, ref=None)
+    sf.sync(args)
     files_after = set(REF_DIR.rglob("*.md"))
     assert files_before == files_after, (
         f"Dry run created unexpected files: {files_after - files_before}"
@@ -47,7 +53,7 @@ def test_real_sync_produces_prompts_per_stage():
     """After a real sync, every FLOW stage directory must contain at least one prompt file."""
     prompts_dir = REF_DIR / "prompts"
     if not prompts_dir.exists():
-        return  # sync not yet run — skip silently
+        return  # sync not yet run - skip silently
 
     expected_stages = ["find", "leverage", "optimize", "win", "local"]
     missing = [
@@ -64,7 +70,7 @@ def test_synced_files_have_attribution_headers():
     """Every synced prompt file must start with the CC BY 4.0 attribution comment."""
     prompts_dir = REF_DIR / "prompts"
     if not prompts_dir.exists():
-        return  # sync not yet run — skip silently
+        return  # sync not yet run - skip silently
 
     attribution_prefix = "<!-- Source: github.com/AgriciDaniel/flow"
     failures = []
@@ -119,7 +125,7 @@ def test_base_headers_has_no_authorization():
     sf = _load_sync_flow_module()
     headers = sf._base_headers()
     assert "Authorization" not in headers, (
-        "Authorization found in _base_headers() — anon headers must be token-free"
+        "Authorization found in _base_headers() - anon headers must be token-free"
     )
     assert "Accept" in headers
     assert "X-GitHub-Api-Version" in headers

@@ -1,7 +1,7 @@
 # Legends SEO Dungeon: Multi-Agent Instructions
 
 Legends SEO Dungeon combines the
-v2.2.5 SEO engine, a Codex-default 16-bit dungeon crawler UI, portable SEO skill
+v2.2.7 SEO engine, a Codex-default 16-bit dungeon crawler UI, portable SEO skill
 instructions, and Codex-first agent profiles.
 
 ## Overview
@@ -102,7 +102,7 @@ touch skill frontmatter, agent prompts, or extension mirrors.
 
 ## Bundled engine runtime
 
-The engine is pinned to public Claude SEO v2.2.5 plus public maintenance;
+The engine is pinned to public Claude SEO v2.2.7 plus public maintenance;
 see `docs/UPSTREAM-SEO-AUDIT-2026-09-06.md`. Game/package versions follow the
 bundled public Claude SEO release; Dungeon-only fixes are identified by commits.
 From this repository, every upstream `claude-seo` invocation can be run as
@@ -111,3 +111,9 @@ this repository's `scripts/runtime.py` when auditing another working directory.
 Use `doctor --json` to inspect readiness, `setup` for explicit installation, and
 `run <script.py>` for isolated execution. Never fall back to global pip installs.
 Keep the existing direct DataForSEO and Firecrawl adapters and delegation strength.
+
+## EDR and Security Guardrails
+
+- **No shell-wrapped or hidden subprocesses**: Never spawn `powershell.exe -Command`, `-EncodedCommand`, `-ExecutionPolicy Bypass`, `cmd.exe /c`, `WScript.Shell`, or `windowsHide: true`. Invoke `python scripts/runtime.py` or Node entrypoints directly with explicit argument arrays (`shell: false`).
+- **Path and symlink safety**: Reject symlinks on credential files, `.env` inputs, cache files, and output targets, and never write batch outputs to Windows Controlled Folder Access protected folders (`Documents`, `Desktop`, `Pictures`).
+- **Network and credential safety**: Route all external URL fetches through `scripts/url_safety.py` with response byte ceilings, and disable redirects and ambient proxies on authenticated endpoints.

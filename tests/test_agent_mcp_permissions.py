@@ -41,6 +41,6 @@ def test_dataforseo_agent_bodies_stay_mirrored():
 
 
 def test_dataforseo_installers_use_matching_mcp_server_name():
-    for rel in ("extensions/dataforseo/install.sh", "extensions/dataforseo/install.ps1"):
+    for rel in ("extensions/dataforseo/install.sh", "scripts/runtime.py"):
         text = _text(ROOT / rel)
-        assert "['dataforseo']" in text
+        assert "['dataforseo']" in text or '["dataforseo"]' in text

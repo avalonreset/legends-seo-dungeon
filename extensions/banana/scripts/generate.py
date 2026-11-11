@@ -6,7 +6,7 @@ Uses only Python stdlib (no pip dependencies).
 
 Usage:
     generate.py --prompt "a cat in space" [--aspect-ratio 16:9] [--resolution 1K]
-                [--model MODEL] [--api-key KEY] [--thinking LEVEL] [--image-only]
+                [--model MODEL] [--api-key-file PATH] [--thinking LEVEL] [--image-only]
 """
 
 import argparse
@@ -14,7 +14,9 @@ import base64
 import json
 import os
 import re
+import ssl
 import sys
+import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +26,9 @@ DEFAULT_RESOLUTION = "1K"
 DEFAULT_RATIO = "1:1"
 OUTPUT_DIR = Path.home() / "Documents" / "nanobanana_generated"
 API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+MAX_RESPONSE_BYTES = 25 * 1024 * 1024
+_MODEL_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+_API_KEY_VALUE_RE = re.compile(r"^[\x21-\x7e]{1,512}$")
 
 VALID_RATIOS = {"1:1", "16:9", "9:16", "4:3", "3:4", "2:3", "3:2",
                 "4:5", "5:4", "1:4", "4:1", "1:8", "8:1", "21:9"}
@@ -32,6 +37,58 @@ _GOOGLE_API_KEY_PREFIX = "AI" + "za"
 _GOOGLE_API_KEY_RE = re.compile(_GOOGLE_API_KEY_PREFIX + r"[0-9A-Za-z_-]+")
 _GOOGLE_KEY_QUERY_RE = re.compile(r"([?&])key=[^&\s'\"<>)]*(&?)")
 _GOOGLE_KEY_BARE_RE = re.compile(r"\bkey=[^&\s'\"<>)]*")
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(
+            req.full_url, code, "Redirects are not allowed for authenticated API requests", headers, fp
+        )
+
+
+def _install_safe_opener():
+    ctx = ssl.create_default_context()
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        urllib.request.HTTPSHandler(context=ctx),
+        _NoRedirect(),
+    )
+    urllib.request.install_opener(opener)
+
+
+_MACOS_SYSTEM_SYMLINKS = {
+    Path("/var"),
+    Path("/tmp"),
+    Path("/etc"),
+    Path("/private/var"),
+    Path("/private/tmp"),
+    Path("/private/etc"),
+}
+
+
+def _read_api_key_file(key_file_path):
+    p = Path(key_file_path)
+    for candidate in (p, *p.parents):
+        if candidate != p and candidate in _MACOS_SYSTEM_SYMLINKS:
+            continue
+        try:
+            if candidate.is_symlink():
+                print(json.dumps({"error": True, "message": "Symlinks are not allowed for --api-key-file"}))
+                sys.exit(1)
+        except OSError:
+            pass
+    if not p.is_file():
+        print(json.dumps({"error": True, "message": "API key file not found"}))
+        sys.exit(1)
+    if p.stat().st_size > 4096:
+        print(json.dumps({"error": True, "message": "API key file exceeds 4 KiB size limit"}))
+        sys.exit(1)
+    raw = p.read_text(encoding="utf-8").strip()
+    if not _API_KEY_VALUE_RE.match(raw):
+        print(json.dumps({"error": True, "message": "Invalid API key format in --api-key-file"}))
+        sys.exit(1)
+    return raw
 
 
 def _redact_google_api_key(value):
@@ -55,7 +112,14 @@ def _redact_google_api_key(value):
 def generate_image(prompt, model, aspect_ratio, resolution, api_key,
                    thinking_level=None, image_only=False):
     """Call Gemini API to generate an image."""
-    url = f"{API_BASE}/{model}:generateContent"
+    model_id = model if model is not None else "gemini-2.5-flash-image"
+    if not isinstance(model_id, str) or not _MODEL_ID_RE.match(model_id):
+        print(json.dumps({"error": True, "message": "Invalid model identifier"}))
+        sys.exit(1)
+    if not isinstance(api_key, str) or not _API_KEY_VALUE_RE.match(api_key):
+        print(json.dumps({"error": True, "message": "Invalid API key format"}))
+        sys.exit(1)
+    url = f"{API_BASE}/{model_id}:generateContent"
 
     modalities = ["IMAGE"] if image_only else ["TEXT", "IMAGE"]
     body = {
@@ -80,9 +144,17 @@ def generate_image(prompt, model, aspect_ratio, resolution, api_key,
         method="POST",
     )
 
+    _install_safe_opener()
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
+            try:
+                raw_resp = resp.read(MAX_RESPONSE_BYTES + 1)
+            except TypeError:
+                raw_resp = resp.read()
+            if len(raw_resp) > MAX_RESPONSE_BYTES:
+                print(json.dumps({"error": True, "message": "API response exceeds 25 MiB limit"}))
+                sys.exit(1)
+            result = json.loads(raw_resp.decode("utf-8"))
     except urllib.error.HTTPError as e:
         error_body = _redact_google_api_key(
             e.read().decode("utf-8", "replace") if e.fp else ""
@@ -139,7 +211,7 @@ def main():
     parser.add_argument("--aspect-ratio", default=DEFAULT_RATIO, help=f"Aspect ratio (default: {DEFAULT_RATIO})")
     parser.add_argument("--resolution", default=DEFAULT_RESOLUTION, help=f"Resolution: 512, 1K, 2K, 4K (default: {DEFAULT_RESOLUTION})")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Model ID (or set NANOBANANA_MODEL env)")
-    parser.add_argument("--api-key", default=None, help="Google AI API key (or set GOOGLE_AI_API_KEY env)")
+    parser.add_argument("--api-key-file", default=None, help="Path to file containing Google AI API key")
     parser.add_argument("--thinking", default=None, choices=["minimal", "low", "medium", "high"], help="Thinking level")
     parser.add_argument("--image-only", action="store_true", help="Return image only (no text)")
 
@@ -153,13 +225,17 @@ def main():
         print(json.dumps({"error": True, "message": f"Invalid resolution '{args.resolution}'. Valid: {sorted(VALID_RESOLUTIONS)}"}))
         sys.exit(1)
 
-    if not args.model:
-        print(json.dumps({"error": True, "message": "No model. Set NANOBANANA_MODEL or pass --model."}))
+    if not args.model or not _MODEL_ID_RE.match(args.model):
+        print(json.dumps({"error": True, "message": "No valid model. Set NANOBANANA_MODEL or pass --model."}))
         sys.exit(1)
 
-    api_key = args.api_key or os.environ.get("GOOGLE_AI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    api_key = (
+        (_read_api_key_file(args.api_key_file) if args.api_key_file else None)
+        or os.environ.get("GOOGLE_AI_API_KEY")
+        or os.environ.get("GOOGLE_API_KEY")
+    )
     if not api_key:
-        print(json.dumps({"error": True, "message": "No API key. Set GOOGLE_AI_API_KEY env or pass --api-key"}))
+        print(json.dumps({"error": True, "message": "No API key. Set GOOGLE_AI_API_KEY env or pass --api-key-file"}))
         sys.exit(1)
 
     result = generate_image(

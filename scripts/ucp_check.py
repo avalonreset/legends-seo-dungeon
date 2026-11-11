@@ -43,6 +43,7 @@ if _SCRIPTS_DIR not in sys.path:
 from url_safety import (  # noqa: E402
     URLSafetyError,
     safe_requests_get,
+    safe_requests_head,
     validate_url_strict,
 )
 
@@ -149,12 +150,16 @@ def probe_endpoint(url: str, *, timeout: int = 10) -> dict:
         out["error"] = f"ssrf-blocked: {exc}"
         return out
     try:
-        resp = safe_requests_get(url, timeout=timeout, allow_redirects=True)
+        resp = safe_requests_head(url, timeout=timeout, allow_redirects=True)
         out["status_code"] = resp.status_code
         out["reachable"] = 200 <= resp.status_code < 500
     except Exception as exc:
         out["error"] = str(exc)
     return out
+
+
+MAX_UCP_PROFILE_BYTES = 262_144
+MAX_UCP_ENDPOINT_PROBES = 16
 
 
 def audit_site(
@@ -180,7 +185,12 @@ def audit_site(
         report["summary"] = f"discovery-url-blocked-by-url-safety: {exc}"
         return report
     try:
-        resp = safe_requests_get(discovery, timeout=timeout, allow_redirects=True)
+        resp = safe_requests_get(
+            discovery,
+            timeout=timeout,
+            allow_redirects=True,
+            max_bytes=MAX_UCP_PROFILE_BYTES,
+        )
     except Exception as exc:
         report["summary"] = f"fetch-failed: {exc}"
         return report
@@ -196,7 +206,7 @@ def audit_site(
     report["parse"] = parsed
 
     if probe_endpoints and parsed.get("capabilities"):
-        for cap in parsed["capabilities"]:
+        for cap in parsed["capabilities"][:MAX_UCP_ENDPOINT_PROBES]:
             endpoint = cap.get("endpoint")
             if endpoint:
                 report["endpoint_probes"].append(probe_endpoint(endpoint, timeout=timeout))

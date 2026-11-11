@@ -71,7 +71,7 @@ def test_is_spa_positive(html: str) -> None:
         "<html><body><article>"
         + ("Lorem ipsum dolor sit amet, consectetur adipiscing elit. " * 5)
         + "</article></body></html>",
-        # example.com-style minimal informational page (~125 chars body) —
+        # example.com-style minimal informational page (~125 chars body) -
         # the threshold was specifically tuned not to flag this.
         '<html><body><div><h1>Example Domain</h1>'
         '<p>This domain is for use in illustrative examples in documents. '
@@ -221,7 +221,7 @@ def test_wait_for_dom_stability_is_bounded() -> None:
 
 
 # ---------------------------------------------------------------------------
-# render_page — argument validation
+# render_page - argument validation
 # ---------------------------------------------------------------------------
 
 
@@ -237,7 +237,7 @@ def test_render_page_rejects_invalid_viewport() -> None:
 
 
 # ---------------------------------------------------------------------------
-# render_page — SSRF pre-flight delegation
+# render_page - SSRF pre-flight delegation
 # ---------------------------------------------------------------------------
 
 
@@ -259,13 +259,13 @@ def test_render_page_blocks_ssrf(url: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# render_page — raw mode (mode='never') is the cheap, network-touching path
+# render_page - raw mode (mode='never') is the cheap, network-touching path
 # ---------------------------------------------------------------------------
 
 
 def test_render_page_never_mode_against_example_com() -> None:
     """Single live-network check. example.com is the canonical IETF-reserved
-    test target — stable, public, low-traffic, no auth required."""
+    test target - stable, public, low-traffic, no auth required."""
     result = render_page.render_page("https://example.com/", mode="never")
     assert result["error"] is None
     assert result["status_code"] == 200
@@ -277,7 +277,7 @@ def test_render_page_never_mode_against_example_com() -> None:
 
 
 # ---------------------------------------------------------------------------
-# render_page — auto mode decision logic (mocked, no real network for SPA path)
+# render_page - auto mode decision logic (mocked, no real network for SPA path)
 # ---------------------------------------------------------------------------
 
 
@@ -496,7 +496,7 @@ def test_render_page_raw_fetch_failure_surfaces_clean_error() -> None:
 
 
 # ---------------------------------------------------------------------------
-# render_page — content-extraction graceful degradation
+# render_page - content-extraction graceful degradation
 # ---------------------------------------------------------------------------
 
 
@@ -529,7 +529,7 @@ def test_render_page_extraction_disabled_by_flag() -> None:
 
 
 # ---------------------------------------------------------------------------
-# render_page — result-shape contract
+# render_page - result-shape contract
 # ---------------------------------------------------------------------------
 
 

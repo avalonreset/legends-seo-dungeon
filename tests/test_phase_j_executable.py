@@ -1,9 +1,9 @@
 """
 Tests for Phase J executable layer:
-    scripts/ucp_check.py             — UCP profile discovery + validation
-    scripts/iptc_ai_label.py         — IPTC DigitalSourceType audit + inject
-    scripts/agent_ux_check.py        — agent-friendly page scorer
-    scripts/render_page.py           — extract_accessibility extension
+    scripts/ucp_check.py             - UCP profile discovery + validation
+    scripts/iptc_ai_label.py         - IPTC DigitalSourceType audit + inject
+    scripts/agent_ux_check.py        - agent-friendly page scorer
+    scripts/render_page.py           - extract_accessibility extension
 
 Tests are pure (no network, no exiftool, no Playwright). External
 dependencies are either mocked or short-circuited via the public API
@@ -228,7 +228,7 @@ def test_analyze_html_detects_unlabeled_inputs():
     </form>
     """
     findings = agent_ux_check.analyze_html(html)
-    # phone has no <label for="phone"> — should count as unlabeled.
+    # phone has no <label for="phone"> - should count as unlabeled.
     assert findings["inputs_without_label"] == 1
     # Both inputs lack ARIA labels (one has visible label, but no aria-*).
     assert findings["inputs_without_aria"] >= 1

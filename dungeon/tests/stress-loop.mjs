@@ -79,7 +79,6 @@ function runCommand(label, command, args, env) {
       cwd: process.cwd(),
       env: { ...process.env, ...env },
       stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
     });
     let output = '';
     child.stdout.on('data', (chunk) => {

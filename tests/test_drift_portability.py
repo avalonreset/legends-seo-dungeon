@@ -38,7 +38,7 @@ def test_fetch_page_data_uses_tempfile_not_dev_stdout_or_stdin() -> None:
             assert Path(cmd[2]) == temp_paths[0]
             return SimpleNamespace(
                 returncode=0,
-                stdout=json.dumps({"title": "café �", "h1": [], "h2": [], "schema": []}),
+                stdout=json.dumps({"title": "café \ufffd", "h1": [], "h2": [], "schema": []}),
                 stderr="",
             )
 
@@ -50,6 +50,6 @@ def test_fetch_page_data_uses_tempfile_not_dev_stdout_or_stdin() -> None:
     assert result["error"] is None
     assert result["status_code"] == 203
     assert "café" in result["html"]
-    assert result["parsed"]["title"] == "café �"
+    assert result["parsed"]["title"] == "café \ufffd"
     assert all("/dev/stdout" not in cmd for cmd, _kwargs in calls)
     assert temp_paths and not os.path.exists(temp_paths[0])

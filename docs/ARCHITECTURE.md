@@ -235,9 +235,7 @@ extensions/
 ├── dataforseo/               # DataForSEO direct API + optional MCP adapter
 │   ├── README.md
 │   ├── install.sh
-│   ├── install.ps1
 │   ├── uninstall.sh
-│   ├── uninstall.ps1
 │   ├── field-config.json
 │   ├── skills/seo-dataforseo/SKILL.md
 │   ├── agents/seo-dataforseo.md
@@ -256,9 +254,7 @@ extensions/
 └── firecrawl/                # Firecrawl direct API + optional MCP adapter
     ├── README.md
     ├── install.sh
-    ├── install.ps1
     ├── uninstall.sh
-    ├── uninstall.ps1
     └── skills/seo-firecrawl/SKILL.md
 ```
 
@@ -278,8 +274,8 @@ extensions/
 ### Extension Convention
 
 1. Self-contained in `extensions/<name>/`
-2. Own `install.sh` (and `install.ps1` where Windows is supported) that copy files and may configure optional MCP adapters where applicable
-3. Own `uninstall.sh` (and `uninstall.ps1` where present) that reverse installation
+2. Installed cross-platform via `python scripts/runtime.py install-extension <name>` or `install.sh`
+3. Uninstalled cross-platform via `python scripts/runtime.py uninstall-extension <name>` or `uninstall.sh`
 4. Installs the sub-skill mirror to the plugin's skill directory
 5. Installs the sub-agent mirror to the plugin's agent directory (extensions that ship one; lighter extensions are skill-only)
 6. Prefer project `.env` credentials and direct scripts for normal Legends SEO Dungeon audits

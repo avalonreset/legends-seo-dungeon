@@ -14,7 +14,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 HOOKS_JSON = REPO_ROOT / "hooks" / "hooks.json"
 HOOK_LAUNCHER = REPO_ROOT / "hooks" / "run-python-hook.js"
-INSTALL_PS1 = REPO_ROOT / "install.ps1"
+RUNTIME_PY = REPO_ROOT / "scripts" / "runtime.py"
 
 
 def _post_tool_handler() -> dict:
@@ -70,10 +70,11 @@ def test_hook_launcher_preserves_blocking_exit_code_two(tmp_path: Path) -> None:
 
 
 def test_windows_installer_prefers_py_launcher_and_rejects_store_stubs() -> None:
-    text = INSTALL_PS1.read_text(encoding="utf-8")
-    py_pos = text.index('Exe = "py"; Args = @("-3")')
-    python3_pos = text.index('Exe = "python3"; Args = @()')
-    python_pos = text.index('Exe = "python"; Args = @()')
+    text = HOOK_LAUNCHER.read_text(encoding="utf-8")
+    py_pos = text.index('"py"')
+    python3_pos = text.index('"python3"')
+    python_pos = text.index('"python"')
 
     assert py_pos < python3_pos < python_pos
-    assert "Microsoft Store|WindowsApps|App execution alias|was not found" in text
+    assert "WindowsApps" in text or "Microsoft Store" in text
+    assert "command_install_codex" in RUNTIME_PY.read_text(encoding="utf-8")

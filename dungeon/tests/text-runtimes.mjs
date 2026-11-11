@@ -41,7 +41,7 @@ process.stdout.write(JSON.stringify({args, prompt, cwd: process.cwd()}) + '\\n')
     process.env[`SEO_DUNGEON_${env}_ARGS`] = [`"${fixture}"`, ...defaults].join(' ');
     const stream = [];
     const result = await bridge.runAgent(prompt, line => stream.push(line), tmp, `test-${runtime}`, { runtime, profile: 'fast' });
-    assert.equal(result.cwd, tmp);
+    assert.equal(result.cwd, fs.realpathSync(tmp));
     assert(result.prompt.endsWith(prompt));
     assert(result.prompt.includes(`using ${runtime}`));
     assert(stream.length > 0);
@@ -51,6 +51,73 @@ process.stdout.write(JSON.stringify({args, prompt, cwd: process.cwd()}) + '\\n')
       assert(!result.args.includes('--model'), 'use the authenticated CLI model by default');
     }
     await assert.rejects(bridge.runAgent('FORCE_FAILURE', () => {}, tmp, `fail-${runtime}`, { runtime }), /fixture account unavailable/);
+  }
+
+  const cmdShim = path.join(tmp, 'fake-cmd-agent.cmd');
+  fs.writeFileSync(
+    cmdShim,
+    `@ECHO OFF\r\n"${process.execPath}" "%~dp0\\fake text agent.cjs" %*\r\n`,
+    'utf8'
+  );
+  const cmdLaunch = bridge.resolveCliLaunch(cmdShim);
+  assert.equal(cmdLaunch.shell, false, 'Windows .cmd shims must never enable shell: true');
+  if (process.platform === 'win32') {
+    assert.equal(cmdLaunch.command, 'node.exe');
+    assert.deepEqual(cmdLaunch.argsPrefix, [fixture]);
+    process.env.SEO_DUNGEON_CLAUDE_CLI = cmdShim;
+    process.env.SEO_DUNGEON_CLAUDE_ARGS = '--print --output-format text --permission-mode acceptEdits';
+    const metaPrompt = 'Audit title & whoami | echo %COMSPEC% > pwned.txt --flag-like';
+    const cmdResult = await bridge.runAgent(metaPrompt, () => {}, tmp, 'test-cmd-shim', { runtime: 'claude', profile: 'fast' });
+    assert(cmdResult.prompt.includes(metaPrompt));
+    assert(!fs.existsSync(path.join(tmp, 'pwned.txt')), 'cmd.exe metacharacters must never execute');
+
+    // Regression tests for Claude-style native .exe .ps1/.cmd shims and .mjs .ps1 shims ([DUNGEON-DIFF-01])
+    const nativeBinDir = path.join(tmp, 'node_modules', '@anthropic-ai', 'claude-code', 'bin');
+    fs.mkdirSync(nativeBinDir, { recursive: true });
+    const fakeClaudeExe = path.join(nativeBinDir, 'claude.exe');
+    fs.writeFileSync(fakeClaudeExe, 'MZ', 'utf8');
+    const claudePs1 = path.join(tmp, 'claude.ps1');
+    fs.writeFileSync(
+      claudePs1,
+      `& "$basedir/node_modules/@anthropic-ai/claude-code/bin/claude.exe" $args\r\n`,
+      'utf8'
+    );
+    const claudeCmd = path.join(tmp, 'claude.cmd');
+    fs.writeFileSync(
+      claudeCmd,
+      `@ECHO OFF\r\n"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe" %*\r\n`,
+      'utf8'
+    );
+    const resolvedNativePs1 = bridge.resolveCliLaunch(claudePs1);
+    assert.equal(resolvedNativePs1.command, fakeClaudeExe);
+    assert.deepEqual(resolvedNativePs1.argsPrefix, []);
+    assert.equal(resolvedNativePs1.shell, false);
+
+    const resolvedNativeCmd = bridge.resolveCliLaunch(claudeCmd);
+    assert.equal(resolvedNativeCmd.command, fakeClaudeExe);
+    assert.deepEqual(resolvedNativeCmd.argsPrefix, []);
+    assert.equal(resolvedNativeCmd.shell, false);
+
+    const mjsTarget = path.join(tmp, 'node_modules', 'pkg', 'cli.mjs');
+    fs.mkdirSync(path.dirname(mjsTarget), { recursive: true });
+    fs.writeFileSync(mjsTarget, '// mjs\n', 'utf8');
+    const mjsPs1 = path.join(tmp, 'mjs-agent.ps1');
+    fs.writeFileSync(
+      mjsPs1,
+      `& "$basedir/node$exe"  "$basedir/node_modules/pkg/cli.mjs" $args\r\n`,
+      'utf8'
+    );
+    const resolvedMjsPs1 = bridge.resolveCliLaunch(mjsPs1);
+    assert.equal(resolvedMjsPs1.command, 'node.exe');
+    assert.deepEqual(resolvedMjsPs1.argsPrefix, [mjsTarget]);
+    assert.equal(resolvedMjsPs1.shell, false);
+
+    const badShim = path.join(tmp, 'unknown-wrapper.cmd');
+    fs.writeFileSync(badShim, '@ECHO OFF\r\necho custom\r\n', 'utf8');
+    assert.throws(
+      () => bridge.resolveCliLaunch(badShim),
+      /SEO_DUNGEON_<RUNTIME>_CLI/
+    );
   }
   console.log('Text runtime launch, streaming, profile, quoting, and failure tests passed (Claude, Gemini, Grok).');
 } finally {

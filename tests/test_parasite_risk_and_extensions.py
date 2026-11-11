@@ -110,7 +110,7 @@ def test_audit_page_counts_pattern_hits() -> None:
 def test_extension_has_install_skill_and_docs(name: str, skill_dir: str) -> None:
     base = _REPO_ROOT / "extensions" / name
     assert (base / "install.sh").is_file(), f"{name}/install.sh missing"
-    assert (base / "install.ps1").is_file(), f"{name}/install.ps1 missing"
+    assert not (base / "install.ps1").exists(), f"{name}/install.ps1 must not ship"
     assert (base / "skills" / skill_dir / "SKILL.md").is_file(), (
         f"{name}/skills/{skill_dir}/SKILL.md missing"
     )
@@ -135,7 +135,7 @@ def test_extension_install_script_is_executable(name: str) -> None:
 
 
 def test_every_extension_install_and_uninstall_is_executable() -> None:
-    """All extensions ship executable install.sh + uninstall.sh — including v1 ones."""
+    """All extensions ship executable install.sh + uninstall.sh - including v1 ones."""
     if os.name == "nt":
         pytest.skip("Executable bit is enforced by git on POSIX CI")
     ext_root = _REPO_ROOT / "extensions"

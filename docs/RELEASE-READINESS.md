@@ -1,4 +1,4 @@
-# Release verification — 2026-09-06
+# Release verification - 2026-09-06
 
 This candidate adds the official Grok CLI to the existing Codex, Claude Code,
 and Gemini game runtimes. It also prepares a generic source download.
