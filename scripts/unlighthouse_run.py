@@ -53,7 +53,7 @@ def _resolve_npx_command() -> list[str] | None:
     if not npx:
         return None
     npx_path = Path(npx)
-    if os.name == "nt" and npx_path.suffix.lower() in (".cmd", ".bat"):
+    if npx_path.suffix.lower() in (".cmd", ".bat"):
         npx_cli_js = npx_path.parent / "node_modules" / "npm" / "bin" / "npx-cli.js"
         node_exe = npx_path.parent / "node.exe"
         if not node_exe.is_file():

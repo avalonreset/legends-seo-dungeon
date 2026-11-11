@@ -184,7 +184,6 @@ def test_unlighthouse_resolves_windows_npx_to_node_cli(tmp_path: Path, monkeypat
     fake_npx_cmd.write_text("@ECHO OFF\r\n", encoding="utf-8")
     fake_npx_js.write_text("// npx\n", encoding="utf-8")
 
-    monkeypatch.setattr(unlighthouse_run.os, "name", "nt")
     monkeypatch.setattr(unlighthouse_run.shutil, "which", lambda name: str(fake_npx_cmd) if name == "npx" else str(fake_node))
     resolved = unlighthouse_run._resolve_npx_command()
     assert resolved == [str(fake_node), str(fake_npx_js)]
